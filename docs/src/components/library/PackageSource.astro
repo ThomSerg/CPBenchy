@@ -29,7 +29,36 @@ const related = (c.related ?? []).map(component);
   , {range}, as of this version of the docs.
 </p>
 
-<Code code={s.code} lang={lang} meta={`title="${c.source}"`} />
+<div class="nb-source" data-linked={link ? "" : undefined}>
+  <Code code={s.code} lang={lang} meta={`title="${c.source}"`} />
+  {link && <a class="nb-source-link" href={link} aria-label={`${c.source} on GitHub`} title="View on GitHub"></a>}
+</div>
+
+<style is:global>
+  /* The code block's title bar (the file's path) links to the file on GitHub: an overlay, since the bar is
+     rendered by the code highlighter. */
+  .docs-content .nb-source {
+    position: relative;
+    margin: 1.5rem 0;
+  }
+  .docs-content .nb-source .nb-code-figure {
+    margin: 0;
+  }
+  .nb-source-link {
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 2.1rem;
+    z-index: 3;
+  }
+  .nb-source[data-linked] .nb-code-title-name::after {
+    content: " ↗";
+    color: var(--nb-muted-foreground);
+  }
+  .nb-source:has(.nb-source-link:hover) .nb-code-title-name {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+</style>
 
 {related.length > 0 && (
   <div class="not-prose mt-8">

@@ -9,7 +9,7 @@
  */
 
 /** Where the code is browsable online, for links to the implementation (null: none yet). */
-export const REPOSITORY: { url: string | null; branch: string } = { url: null, branch: "main" };
+export const REPOSITORY: { url: string | null; branch: string } = { url: "https://github.com/ThomSerg/CPBenchy", branch: "main" };
 
 export type Kind = "observer" | "plugin" | "rules" | "module" | "command" | "example" | "executor" | "option";
 
@@ -482,7 +482,7 @@ export const EXAMPLES: Component[] = [
     tags: ["analysis", "pandas", "plot"],
   },
   {
-    id: "runexp",
+    id: "run-experiments",
     name: "Run-Experiments",
     kind: "example",
     category: "integrations",
