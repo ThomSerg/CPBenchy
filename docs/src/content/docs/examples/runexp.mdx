@@ -1,0 +1,85 @@
+---
+title: "Run-Experiments"
+description: "Runs the experiments of a runexp config with cpbenchy, and keeps runexp's result folders."
+sidebar:
+  hidden: true
+---
+
+<PackageHeader id="runexp" />
+
+## What it does
+
+[runexp](https://github.com/IgnaceBleukx/Run-Experiments) runs Python experiments from a JSON config. It
+unravels the config into one experiment per combination of values, and keeps one result folder per
+experiment. `CpbenchyRunner` is a runexp `Runner` that has cpbenchy run each experiment as one solver
+run, with cpbenchy's limits and measurements. The stats go into that experiment's folder, as runexp
+expects.
+
+So you keep runexp's configs, folders and analysis, and cpbenchy does the measuring. It uses
+[`cpbenchy.backend`](/guides/backend/), the way to use cpbenchy from any experiment framework.
+
+## Use it
+
+A config, with lists and ranges that runexp unravels. A glob in `instance` becomes one experiment per
+file:
+
+```json title="config.json"
+{
+  "solver": ["ortools", "exact"],
+  "instance": "instances/*.opb",
+  "time_limit": 60,
+  "seed": {"_from": 1, "_to": 4},
+  "params": {"num_search_workers": 1}
+}
+```
+
+```sh
+python examples/runexp/main.py config.json results/ --jobs 4 --memory-limit 4096
+```
+
+Each experiment gets a folder in `results/`. Running it again only runs the experiments that have no
+folder yet.
+
+```
+results/000001/
+├── config.json      the experiment's config, as runexp writes it
+├── status.txt       one file per main stat: status, solved, objective, walltime_s, cputime_s, ...
+├── stats.json       the whole cpbenchy result record
+└── solver.log       the run's output
+```
+
+Load them with runexp, as any other results:
+
+```python
+from runexp.utils import results_to_df
+
+df = results_to_df("results", fnames=["status.txt", "walltime_s.txt", "solved.txt"])
+```
+
+## The config
+
+| Key | |
+|---|---|
+| `solver` | a CPMpy solver name |
+| `instance` | one instance file; a glob becomes one experiment per file |
+| `time_limit` | seconds |
+| `mem_limit_mib` | optional; else `--memory-limit` |
+| `params` | optional: arguments for `solve()` |
+| `seed`, `cores` | optional |
+| `loader` | optional: a [loader](/plugins/loaders/) reference, as for `--loader` |
+
+Any key can be a list or a range, as usual in runexp.
+
+## Notes
+
+- **cpbenchy runs the experiments.** There is no experiment function, so pass `func=None`. cpbenchy
+  limits and measures each run, in place of runexp's own memory limit and process pool. `--jobs` is the
+  number of runs in parallel, each on cores of its own.
+- **In your own runexp script**, import `CpbenchyRunner` and use it as any other runner:
+  `CpbenchyRunner(func=None, output="results", memory_limit=4096).run_batch(config, parallel=True, num_workers=4)`.
+- **More stats as files.** Add names to `STATS` in the file, or plugins to the `run(...)` call with
+  `plugins=[...]`. What plugins record ends up in `stats.json`, under `extra`.
+
+## Implementation
+
+<PackageSource id="runexp" />

@@ -24,4 +24,10 @@ cpbenchy run instances/ -s ortools -t 60 -p cpbenchy.observers:CheckSolutions -p
 | [scripts/formulations.py](scripts/formulations.py) | compare formulations of your own model on generated instances, without instance files |
 | [scripts/analyze.py](scripts/analyze.py) | scores, the virtual best solver, and a cactus plot, with pandas |
 
+**Integrations**, with other experiment tools
+
+| | |
+|---|---|
+| [runexp/](runexp/) | run the experiments of a [runexp](https://github.com/IgnaceBleukx/Run-Experiments) config with cpbenchy, keeping runexp's result folders |
+
 `data/` has tiny instances for trying the competition observers.

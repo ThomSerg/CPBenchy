@@ -66,6 +66,9 @@ run(submissions, jobs=4, out="cpbenchy-scratch", on_result=store)
 Afterwards, each row holds a result such as
 `{"status": "optimal", "objective": -9, "walltime_s": 1.40, "memory_mib": 55.4, ...}`.
 
+For a complete integration with an existing framework, see the [Run-Experiments example](/examples/runexp/): a
+runexp `Runner` that has cpbenchy measure each experiment of a runexp config.
+
 The rest of this page goes through the steps: describing a run, what comes back, and what happens
 when something goes wrong.
 

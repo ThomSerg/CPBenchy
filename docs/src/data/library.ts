@@ -16,7 +16,7 @@ export type Kind = "observer" | "plugin" | "rules" | "module" | "command" | "exa
 export type Category = "output" | "solutions" | "rules" | "competitions" | "analysis" | "running";
 
 /** How the examples are grouped: by what kind of file to copy. */
-export type ExampleCategory = "plugins" | "loaders" | "scripts";
+export type ExampleCategory = "plugins" | "loaders" | "scripts" | "integrations";
 
 export interface Component {
   /** The page: /library/<id>/ */
@@ -410,6 +410,7 @@ export const EXAMPLE_CATEGORIES: { id: ExampleCategory; title: string; blurb: st
   { id: "plugins", title: "Plugins", blurb: "Score, store or follow runs; enable one with -p." },
   { id: "loaders", title: "Loaders", blurb: "Benchmark problems in a format of your own." },
   { id: "scripts", title: "Scripts", blurb: "Whole experiments and analyses, from Python." },
+  { id: "integrations", title: "Integrations", blurb: "Use cpbenchy from other experiment tools." },
 ];
 
 export const EXAMPLES: Component[] = [
@@ -479,6 +480,21 @@ export const EXAMPLES: Component[] = [
     requires: ["pandas", "matplotlib, for the plot"],
     related: ["par", "sqlite-store"],
     tags: ["analysis", "pandas", "plot"],
+  },
+  {
+    id: "runexp",
+    name: "Run-Experiments",
+    kind: "example",
+    category: "integrations",
+    summary: "Runs the experiments of a runexp config with cpbenchy, and keeps runexp's result folders.",
+    shows: "using cpbenchy from another experiment framework, through cpbenchy.backend",
+    icon: "ph:plugs-connected",
+    use: "python examples/runexp/main.py config.json results/ --jobs 4",
+    source: "examples/runexp/cpbenchy_runner.py",
+    symbol: "CpbenchyRunner",
+    requires: ["runexp (github.com/IgnaceBleukx/Run-Experiments)"],
+    related: ["param-sweep", "analyze"],
+    tags: ["runexp", "integration", "backend"],
   },
 ];
 

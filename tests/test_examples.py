@@ -86,6 +86,32 @@ def test_analyze_script(benchtester, capsys):
     assert (benchtester.path / "cactus.png").stat().st_size > 1000
 
 
+def test_runexp_cpbenchy_runner_main(benchtester):
+    """examples/runexp: main.py runs a runexp config through cpbenchy_runner.CpbenchyRunner."""
+    import json
+    import shutil
+    import subprocess
+
+    pytest.importorskip("runexp")
+    (benchtester.path / "instances").mkdir()
+    for name in ("knapsack.opb", "unsat.opb"):
+        shutil.copy(DATA / name, benchtester.path / "instances")
+    config = {"solver": ["ortools"], "instance": "instances/*.opb", "time_limit": 10, "seed": {"_from": 1, "_to": 3}}
+    (benchtester.path / "config.json").write_text(json.dumps(config))
+    main = [sys.executable, str(EXAMPLES / "runexp" / "main.py"), "config.json", "results", "--jobs", "2"]
+
+    done = subprocess.run(main, capture_output=True, text=True, timeout=300)
+    assert done.returncode == 0, done.stderr
+    folders = sorted((benchtester.path / "results").iterdir())
+    assert len(folders) == 4  # 2 instances x 2 seeds
+    statuses = sorted((folder / "status.txt").read_text() for folder in folders)
+    assert statuses == ["optimal", "optimal", "unsat", "unsat"]
+    assert json.loads((folders[0] / "stats.json").read_text())["executor"]
+
+    again = subprocess.run(main, input="y\n", capture_output=True, text=True, timeout=300)
+    assert "0 experiments to run" in again.stdout  # runexp skips the configs it has results for
+
+
 def test_every_example_is_tested():
     tested = Path(__file__).read_text()
     for path in EXAMPLES.rglob("*.py"):

@@ -1,0 +1,7 @@
+{
+  "solver": ["ortools", "exact"],
+  "instance": "instances/*.opb",
+  "time_limit": 60,
+  "seed": {"_from": 1, "_to": 4},
+  "params": {"num_search_workers": 1}
+}
