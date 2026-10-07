@@ -1,0 +1,33 @@
+---
+title: "analyze.py"
+description: "Compares solvers on finished results: scores, the best of all solvers, and a plot."
+sidebar:
+  hidden: true
+---
+
+<PackageHeader id="analyze" />
+
+## What it does
+
+Compares solvers on the results of an experiment: a score table (solved instances and [PAR-2](/library/par/) per
+solver), the virtual best solver (the fastest solver per instance, as a perfect portfolio would pick),
+and a cactus plot. A starting point for your own analysis: results are a plain table, so most analyses
+are a few lines of pandas.
+
+## Use it
+
+```sh
+python examples/scripts/analyze.py results/xcsp3-cop
+python examples/scripts/analyze.py results/xcsp3-cop --plot cactus.png
+```
+
+## Options
+
+| Argument | |
+|---|---|
+| `out` | a cpbenchy output directory |
+| `--plot PNG` | also write a cactus plot |
+
+## Implementation
+
+<PackageSource id="analyze" />

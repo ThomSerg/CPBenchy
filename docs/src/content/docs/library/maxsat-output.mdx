@@ -1,0 +1,62 @@
+---
+title: "MaxSATOutput"
+description: "Answers in the format of the MaxSAT Evaluation."
+sidebar:
+  hidden: true
+---
+
+<PackageHeader id="maxsat-output" />
+
+## What it does
+
+Writes what a solver in the MaxSAT Evaluation prints, for each run on a WCNF instance. The cost is the
+objective, and the solution is a string of 0s and 1s, one per variable:
+
+```
+o 5
+o 2
+s OPTIMUM FOUND
+v 010
+```
+
+Each competition specifies what a solver prints:
+- `o` lines with each better objective value, while it solves
+- an `s` line with its answer: `OPTIMUM FOUND`, `SATISFIABLE`, `UNSATISFIABLE` or `UNKNOWN`
+- `v` lines with the solution
+
+The output goes to each run's `logs/<run_id>.maxsat.out`, written inside the measured run, as a
+competition solver would print it, so it costs the run the time it would cost in the competition. A run
+that is killed keeps its `o` lines. Under [`cpbenchy solve`](/library/solve/), the output goes to stdout,
+where competitions read it.
+
+Variables that occur in no clause get 0. Instances in the format before 2022 declare their number of
+variables in the `p wcnf` header; for newer ones, it is the highest variable in a clause.
+
+## Use it
+
+<CodeGroup titles={["Python", "Command line"]}>
+
+```python
+import cpbenchy
+from cpbenchy import observers
+
+cpbenchy.run("mse/*.wcnf.xz", solvers=["ortools", "exact"], time_limit=60, plugins=[observers.MaxSATOutput()])
+```
+
+```sh
+cpbenchy run mse/*.wcnf.xz -s ortools -s exact -t 60 -p cpbenchy.observers:MaxSATOutput
+```
+
+</CodeGroup>
+
+There are no built-in MaxSAT rules yet; [Rules](/guides/rules/#your-own-rules) shows how to write them.
+
+## What it records
+
+| | |
+|---|---|
+| `logs/<run_id>.maxsat.out` | the competition output |
+
+## Implementation
+
+<PackageSource id="maxsat-output" />

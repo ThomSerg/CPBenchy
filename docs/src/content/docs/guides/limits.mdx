@@ -1,0 +1,114 @@
+---
+title: Measurement and limits
+description: How runs are executed, limited, timed and placed on CPUs.
+sidebar:
+  order: 3
+---
+
+## One process per run
+
+Each run is a separate worker process (`python -m cpbenchy.worker`). The worker:
+
+1. loads the instance (`parse_s`)
+2. creates the solver, which transforms the model (`transform_s`)
+3. solves with what is left of the time limit (`solve_s`)
+
+So the time limit covers the whole run, loading included, and the solver gets the rest.
+
+The worker reports progress and its result through an event file. If the worker is killed, the
+executor's measurement says why: `timeout` or `memout`.
+
+## Executors
+
+An executor starts the worker processes and measures them. Choose one with `--executor`, or
+`executor=` in Python:
+
+| Executor | |
+|---|---|
+| `runlimit` | BenchExec's `runexec`. cgroups enforce the memory limit and measure CPU time and peak memory of the whole process tree. Measurements are reliable. |
+| `subprocess` | A plain child process, killed after the time limit. There is no memory limit, and memory is measured for the main process only. |
+| `inline` | The worker runs inside your own process, one run at a time, without limits. Use it for debugging: breakpoints in worker plugins work. |
+| `auto` (default) | `runlimit` if `runexec` works on this machine, else `subprocess`. |
+
+`runlimit` needs cgroups v2 with delegation, which most recent Linux distributions have; `cpbenchy
+doctor` says whether it works here. If not, follow the [BenchExec installation
+guide](https://github.com/sosy-lab/benchexec/blob/main/doc/INSTALL.md). Until then, runs use
+`subprocess`: results are marked `reliable: false`, and the terminal says so.
+
+The executor kills a run `--grace` seconds (default 10) after its time limit, as a backstop for
+solvers that don't stop in time.
+
+## CPU time limits
+
+`-t` limits wall clock time. `--cpu-time-limit SECONDS` also limits CPU time, as competitions limit
+sequential solvers. A run needs both: competitions typically give some extra wall time, such as 30
+minutes of CPU time within 45 minutes of wall time. The solver gets what is left of whichever limit is
+closer.
+
+- With `runlimit`, the CPU time is that of the run's whole process tree, as measured by its cgroup.
+- With `subprocess`, the kernel enforces it (`RLIMIT_CPU`) for the worker process only, not for
+  processes it starts.
+
+Either way, a run is killed `--grace` seconds after its CPU time limit, and its `termination` is
+`cputime`.
+
+## Stopping runs at their limit
+
+By default, the solver is told how much time it has, and it is killed if it is still running `--grace`
+seconds after that. A run killed this way has no result beyond the solutions recorded while it ran.
+
+Competitions do it differently. At the time limit, the solver gets SIGTERM and must print the best
+solution it found, and a second or two later it gets SIGKILL. `--terminate` does the same:
+
+```sh
+cpbenchy run instances/ -s ortools -t 60 --terminate --grace 1 -p cpbenchy.observers:PBOutput
+```
+
+At its time limit (wall or CPU), or when it gets SIGTERM, a run reports the last solution its solver
+found. Its finish hooks run on that solution: competition output gets its `s` and `v` lines, and
+`CheckSolutions` checks it. The run then exits, before the executor kills it `--grace` seconds later.
+
+| What the run had | `status` | `termination` |
+|---|---|---|
+| a solution, while solving an optimization problem | `feasible`, with its objective | `walltime`, `cputime` or `signal` |
+| no solution | `timeout` | same |
+
+Some things to know:
+- The solutions are those the solver reports through its solution callback. Solvers without one,
+  and satisfaction problems, have no solution to report until they finish.
+- Keeping each solution costs a little time per solution, as it does for competition solvers. That
+  is why it is not the default.
+- A watcher thread stops the run, so a solver that holds Python's GIL while it searches can't be
+  stopped this way. Native solvers release it, and are then killed after the grace period at the
+  latest.
+- With `runlimit`, the run also gets SIGTERM from the executor at its CPU time limit, as measured by
+  its cgroup.
+
+[Rules](/guides/rules/) set `--terminate`, `--grace` and the limits together, for a competition track
+or your own setup.
+
+`--container` (runlimit only) gives each run no network access and a read-only file system, except
+for its output directory.
+
+## Cores and memory
+
+`-j N` runs N workers in parallel, and `--cores K` gives each run K cores. BenchExec's core layout
+decides where each run goes:
+- Whole physical cores. Hyperthread siblings stay idle, unless you pass `--hyperthreading`.
+- Within one NUMA node or CPU package where a run fits, spread evenly over the nodes.
+- A run's memory is bound to the NUMA nodes of its cores.
+
+The CPUs a run was pinned to are recorded in its result (`cpus`).
+
+cpbenchy refuses to start if N times the memory limit doesn't fit in the machine's memory, or if N runs
+of K cores don't fit on its cores.
+
+## Solver settings
+
+cpbenchy translates the run's cores and seed into each solver's own parameters. For example,
+`num_search_workers` and `random_seed` for OR-Tools, or `Threads` and `Seed` for Gurobi. Otherwise
+solvers run with their defaults.
+
+Parameters you give yourself (`-P` or `params=`) take precedence. For optimization problems,
+cpbenchy installs CPMpy's solution callback where the solver has one, which records the solution
+trajectory. `--no-solutions` turns that off.

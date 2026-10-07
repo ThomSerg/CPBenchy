@@ -1,0 +1,73 @@
+[project]
+name = "cpbenchy"
+version = "0.1.0.dev0"
+description = "Benchmark CPMpy solvers on datasets under runexec resource limits, extensible with plugins"
+readme = "README.md"
+authors = [
+    { name = "ThomSerg", email = "thomas.s2000@hotmail.com" }
+]
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+requires-python = ">=3.10"
+keywords = ["benchmarking", "constraint programming", "cpmpy", "solvers", "benchexec"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering",
+]
+dependencies = [
+    "benchexec>=3.35,<4",
+    "cpmpy>=1.1",
+    "pluggy>=1.5",
+    "rich>=13",
+    "rich-argparse>=1.5",
+    "tomli>=1.1; python_version < '3.11'",
+]
+
+[project.optional-dependencies]
+pandas = ["pandas>=2"]
+
+[project.urls]
+Documentation = "https://docs.cpbenchy.com/"
+Source = "https://github.com/ThomSerg/CPBenchy"
+Issues = "https://github.com/ThomSerg/CPBenchy/issues"
+
+[project.scripts]
+cpbenchy = "cpbenchy.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.10.4,<0.11.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "exact>=2.2.1",
+    "gurobipy>=13.0.3",
+    "highspy<1.15",
+    "matplotlib>=3.11.2; python_version >= '3.11'",
+    "matplotlib>=3.8; python_version < '3.11'",
+    "pandas>=3.0.6; python_version >= '3.11'",
+    "pandas>=2; python_version < '3.11'",
+    "pychoco>=0.3.0",
+    "pycsp3>=2.6.1",
+    "pyright>=1.1.400",
+    "pytest>=9.1.1",
+    "ruff>=0.12",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["runexec: needs BenchExec runexec with working cgroups (skipped otherwise)"]
+
+[tool.pyright]
+include = ["src"]
+typeCheckingMode = "basic"

@@ -1,0 +1,48 @@
+---
+/**
+ * The bottom of a library component's page: its implementation, read from the repository at build
+ * time (the class or function `symbol` of its `source`, or the whole file), and related components.
+ *
+ *   ## Implementation
+ *
+ *   <PackageSource id="check-solutions" />
+ */
+import { Code } from "@/components/ui/code";
+import { component, pageUrl } from "@/data/library";
+import { snippet, sourceUrl } from "@/lib/library-facts";
+
+interface Props {
+  id: string;
+}
+
+const c = component(Astro.props.id);
+const s = snippet(c.source, c.symbol);
+const lang = c.source.endsWith(".py") ? "python" : c.source.endsWith(".toml") ? "toml" : "text";
+const link = sourceUrl(c.source, c.symbol ? s.start : undefined, c.symbol ? s.end : undefined);
+const range = c.symbol ? `lines ${s.start}–${s.end} of ${s.lines}` : `${s.lines} lines`;
+const related = (c.related ?? []).map(component);
+---
+
+<p class="text-sm text-muted-foreground">
+  {c.symbol ? <>The <code>{c.symbol}</code> in </> : <>The file </>}
+  {link ? <a class="underline underline-offset-2" href={link}><code>{c.source}</code></a> : <code>{c.source}</code>}
+  , {range}, as of this version of the docs.
+</p>
+
+<Code code={s.code} lang={lang} meta={`title="${c.source}"`} />
+
+{related.length > 0 && (
+  <div class="not-prose mt-8">
+    <h3 class="text-base font-semibold text-foreground">Related</h3>
+    <ul class="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+      {related.map((r) => (
+        <li class="list-none">
+          <a class="block rounded-md p-3 ring ring-border hover:bg-accent" href={pageUrl(r)}>
+            <span class="font-mono text-sm font-semibold text-foreground">{r.name}</span>
+            <span class="block text-sm text-muted-foreground">{r.summary}</span>
+          </a>
+        </li>
+      ))}
+    </ul>
+  </div>
+)}

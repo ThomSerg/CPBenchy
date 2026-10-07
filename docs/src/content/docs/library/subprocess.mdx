@@ -1,0 +1,37 @@
+---
+title: "subprocess"
+description: "Runs anywhere, such as a laptop or CI, with best-effort limits."
+sidebar:
+  hidden: true
+---
+
+<PackageHeader id="subprocess" />
+
+## What it does
+
+Runs every worker as a plain child process, pinned to its CPUs on Linux. The time limit is enforced by
+killing the process; a CPU time limit is the kernel's (`RLIMIT_CPU`), for the worker process only. There
+is no memory limit, and memory is that of the main process only, so measurements are best effort.
+
+For laptops and CI without cgroups. `auto` falls back to it where [`runlimit`](/library/runlimit/)
+doesn't work.
+
+## Use it
+
+<CodeGroup titles={["Python", "Command line"]}>
+
+```python
+import cpbenchy
+
+cpbenchy.run("instances/", solvers=["ortools"], time_limit=60, executor="subprocess")
+```
+
+```sh
+cpbenchy run instances/ -s ortools -t 60 --executor subprocess
+```
+
+</CodeGroup>
+
+## Implementation
+
+<PackageSource id="subprocess" />

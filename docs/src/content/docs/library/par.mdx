@@ -1,0 +1,75 @@
+---
+title: "PAR-k scores"
+description: "Ranks solvers the way competitions do: solved fast is good, unsolved is penalised."
+sidebar:
+  hidden: true
+---
+
+<PackageHeader id="par" />
+
+## What it does
+
+Ranks solvers with one number, as many solver competitions do, such as the SAT competitions with
+PAR-2. PAR-k (penalised average runtime) scores each run, and a solver's score is the total over its
+runs. Lower is better.
+
+- A **solved** run scores its time. It is solved when it ends `optimal` or `unsat`, or `feasible` on
+  a problem without an objective.
+- **Any other run** scores k times its time limit: a timeout, a memout, an error, or a solution not
+  proven optimal.
+
+So a solver gains more by solving one more instance than by solving the others a bit faster, and k says
+by how much.
+
+Runs with a CPU time limit, as under the [PB rules](/library/pb26/), are scored by CPU time, against
+that limit. Other runs are scored by wall time.
+
+## Use it
+
+<CodeGroup titles={["Python", "Command line"]}>
+
+```python
+import cpbenchy
+from cpbenchy.scoring import par, par_totals
+
+results = cpbenchy.run("instances/", solvers=["ortools", "exact"], time_limit=60, args=["--par", "2"])
+
+par_totals(results, factor=2)               # {("exact",): 412.3, ("ortools",): 538.9}
+df = results.to_pandas().assign(par2=[par(r) for r in results])
+```
+
+```sh
+cpbenchy run instances/ -s ortools -s exact -t 60 --par 2
+cpbenchy show --par 10                     # stored results, scored with another k
+```
+
+</CodeGroup>
+
+`--par` adds a column to the summary:
+
+```
+┏━━━━━━━━━┳━━━━━━┳━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━┓
+┃ solver  ┃ runs ┃ solved ┃ optimal ┃ timeout ┃ time solved ┃ PAR-2 ┃
+┡━━━━━━━━━╇━━━━━━╇━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━┩
+│ exact   │   10 │      7 │       7 │       3 │       52.3s │ 412.3 │
+│ ortools │   10 │      6 │       6 │       4 │       58.9s │ 538.9 │
+└─────────┴──────┴────────┴─────────┴─────────┴─────────────┴───────┘
+```
+
+Scores are computed from the stored results, so you can score an experiment after the fact, with any
+k. Compare totals over the same instances only: a solver with fewer runs has a lower total.
+
+## Options
+
+| | |
+|---|---|
+| `--par K` | the penalty for an unsolved run, as a multiple of its time limit. Also `par = 2` in `cpbenchy.toml` or in [rules](/guides/rules/) |
+| `par(result, factor=2, time=None)` | one run's score; `time="walltime"` or `"cputime"` to choose which time counts |
+| `par_totals(results, factor=2, time=None, by=("solver",))` | the total per group, as a dictionary keyed by the values of `by` |
+
+Rules that set `par` stay followed when you choose another k: it changes how results are reported, not
+what is measured.
+
+## Implementation
+
+<PackageSource id="par" />

@@ -1,0 +1,63 @@
+---
+title: Result record
+description: Every field of a run's record in results.jsonl.
+sidebar:
+  order: 3
+---
+
+One JSON object per line in `results.jsonl`, and a `RunResult` in Python.
+
+## What ran
+
+| Field | |
+|---|---|
+| `run_id` | hash of what the run measures; used to skip finished runs |
+| `instance` | instance name |
+| `dataset` | dataset name, if the instance came from a CPMpy dataset |
+| `solver` | solver name |
+| `params` | solver parameters given for the run |
+| `seed` | seed, or `null` for the solver's default |
+| `cores` | cores the run was given |
+| `time_limit_s`, `mem_limit_mib`, `cputime_limit_s` | the run's limits (`cputime_limit_s`: `null` without a CPU time limit) |
+| `rules` | the [rules](/guides/rules/) the run followed: their name, `"<name> (modified)"` if options changed them, or `null` |
+| `cpus` | the CPUs the run was pinned to, or `null` if it wasn't pinned |
+
+## The answer
+
+| Field | |
+|---|---|
+| `status` | `optimal`, `feasible`, `unsat`, `unknown`, `timeout`, `memout` or `error`; see [Results](/guides/results/) |
+| `objective` | objective value of the best solution, for `optimal` and `feasible` |
+| `has_objective` | whether the model is an optimization problem; `null` if loading failed |
+| `error` | what went wrong, for `error` |
+
+`solved` is a property in Python, not a field. It is true for `optimal` and `unsat`, and for
+`feasible` when `has_objective` is false.
+
+## Times, measured in the worker
+
+| Field | |
+|---|---|
+| `parse_s` | loading the instance into a CPMpy model |
+| `transform_s` | creating the solver, which is when CPMpy transforms and posts the model |
+| `solve_s` | the `solve()` call |
+
+## Measured by the executor
+
+| Field | |
+|---|---|
+| `walltime_s` | wall time of the whole worker process |
+| `cputime_s` | CPU time of the whole process tree (with `runlimit`) |
+| `memory_mib` | peak memory of the whole process tree (with `runlimit`; the main process otherwise) |
+| `termination` | why the process was stopped: `walltime`, `cputime`, `memory`, ..., or `signal` (SIGTERM, with `--terminate`); `null` if it exited by itself |
+| `exitcode` | the worker's exit code |
+| `executor` | which executor ran it |
+| `reliable` | whether limits were enforced and measurements are trustworthy (cgroups) |
+
+## Context
+
+| Field | |
+|---|---|
+| `started` | when the run started (UTC, ISO 8601) |
+| `host` | the machine's hostname |
+| `extra` | fields added by plugins, e.g. `solutions`: `[[seconds, objective], ...]` |

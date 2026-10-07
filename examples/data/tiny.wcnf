@@ -1,0 +1,6 @@
+c a tiny weighted MaxSAT instance: optimum cost 2 (x2 true)
+p wcnf 3 4 10
+10 1 2 0
+3 -1 0
+2 -2 0
+4 -3 0

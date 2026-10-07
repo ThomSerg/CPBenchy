@@ -1,0 +1,91 @@
+---
+title: Testing and sharing
+description: Test observers, loaders and plugins with the benchtester pytest fixture, and share them as a file, a package, or part of cpbenchy.
+sidebar:
+  order: 6
+---
+
+<Aside type="caution" title="Under construction">
+  Writing plugins is still being worked on: the hooks, the `Observer` and `Loader` classes and these
+  pages may change. To use the plugins and observers that come with cpbenchy, see the
+  [library](/library/).
+</Aside>
+
+## Testing
+
+cpbenchy comes with a pytest fixture, `benchtester`. Enable it in your `conftest.py`:
+
+```python title="conftest.py"
+pytest_plugins = ["cpbenchy.testing"]
+```
+
+Each test then works in a temporary directory of its own. By default, `benchtester.run()` runs
+OR-Tools on a few tiny instances that come with cpbenchy (`cpbenchy.testing.DATA`), in a few seconds.
+These tests check the [`SolverTime`](/plugins/observers/) observer:
+
+```python title="test_solver_time.py"
+from pathlib import Path
+
+from cpbenchy.testing import DATA
+from solver_time import SolverTime
+
+HERE = Path(__file__).parent
+
+
+def test_records_the_solver_time(benchtester):
+    results = benchtester.run(plugins=[SolverTime()])
+    assert all(r.extra["solver_time_s"] >= 0 for r in results)
+
+
+def test_prints_a_summary(benchtester, capsys):
+    benchtester.run(plugins=[SolverTime()], executor="inline", quiet=True)
+    assert "ortools: the solver itself took" in capsys.readouterr().out
+
+
+def test_from_the_command_line(benchtester):
+    plugin = f"{HERE / 'solver_time.py'}:SolverTime(warn_below=1.1)"
+    outcome = benchtester.run_cli("run", str(DATA), "-s", "ortools", "-t", "10", "-o", "out", "-p", plugin)
+    assert outcome.ret == 0
+    assert "took only" in outcome.stdout
+```
+
+| | |
+|---|---|
+| `run(*sources, **kwargs)` | `cpbenchy.run`, by default with ortools, 10 seconds and the tiny instances; returns the results |
+| `run_cli(*args)` | the `cpbenchy` command, in the test's process; returns `ret`, `stdout`, `stderr` and `results` |
+| `makeconf(source)` | write a `cpbenchy_conf.py`, to test a plugin defined in it |
+| `makefile(name, source)` | write any file, such as a `cpbenchy.toml` or rules |
+| `path`, `out` | the test's directory, and the output directory `run` uses |
+
+Two tips:
+
+- **`executor="inline"`** runs the workers in the test's own process. That is faster, breakpoints in
+  worker methods work, and output from the worker can be captured.
+- **Give plugin files as absolute paths**, as in the last test above: each test runs in its own
+  directory.
+
+## Sharing
+
+There are three ways to share what you wrote.
+
+**A file.** An observer, a loader or a plugin is a single `.py` file. Anyone can use it with
+`-p file.py` or `--loader file.py:Name`, without installing anything. The [examples](/examples/) are
+shared this way.
+
+**A package.** Publish it on PyPI with an entry point in the `cpbenchy` group. cpbenchy then loads the
+module wherever the package is installed, including every observer it defines, with its default
+arguments:
+
+```toml title="pyproject.toml"
+[project.entry-points.cpbenchy]
+myplugin = "mypackage.plugin"
+```
+
+Users can turn it off with `-p no:myplugin`, or turn off one of its observers with
+`-p no:ObserverName`. For an observer that shouldn't be on by default, don't declare an entry point:
+users ask for it with `-p "mypackage.plugin:MyObserver(...)"`.
+
+**Part of cpbenchy.** Something most users would want belongs in the [library](/library/). Add the
+code (an observer in `cpbenchy.observers`, or rules in `src/cpbenchy/rules/`) and a test. Then add an
+entry to `docs/src/data/library.ts` and a page in `docs/src/content/docs/library/`, and open a pull
+request.

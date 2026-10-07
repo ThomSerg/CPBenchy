@@ -1,0 +1,29 @@
+---
+title: Library
+description: "Everything that comes with cpbenchy, ready to use: observers, plugins, rules, commands and executors. Click one to see what it does and how to use it."
+tableOfContents: false
+sidebar:
+  order: 1
+  label: Overview
+---
+
+Before writing a plugin, look here: most of what experiments need already exists. Click a component to
+see what it does, how to use it, its options, and its implementation.
+
+Everything here comes with cpbenchy. For files to copy and adapt, such as a scoring plugin, a loader
+for your own format or an analysis script, see the [examples](/examples/).
+
+<Catalog />
+
+## Adding to the library
+
+Wrote something others could use? There are three ways to share it.
+
+- **A file.** Observers, plugins and loaders are plain Python files, and anyone can use one with
+  `-p file.py` or `--loader file.py:Name`. Rules are TOML files, used with `--rules file.toml`.
+- **A package.** Publish it on PyPI with a `cpbenchy` entry point, and it is enabled wherever it is
+  installed. See [testing and sharing](/plugins/testing/#sharing).
+- **cpbenchy itself.** Add the code (an observer in `cpbenchy.observers`, rules in
+  `src/cpbenchy/rules/`) with a test. Then add an entry to `docs/src/data/library.ts` and a page in
+  `docs/src/content/docs/library/`. The page's facts (version, last update, authors, implementation)
+  are read from the repository when the docs are built.

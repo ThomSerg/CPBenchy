@@ -1,0 +1,31 @@
+---
+title: "cpbenchy.backend"
+description: "Lets another experiment tool use cpbenchy to measure its runs."
+sidebar:
+  hidden: true
+---
+
+<PackageHeader id="backend" />
+
+## What it does
+
+Lets another experiment tool use cpbenchy to measure runs. The tool decides which runs exist, which still
+need doing and where results are stored; cpbenchy measures the runs it is given and hands back the
+stats, tagged with the tool's own ids.
+
+## Use it
+
+```python
+from cpbenchy import Instance, Limits, RunSpec
+from cpbenchy.backend import Submission, run
+
+spec = RunSpec(Instance.from_path("instance.opb"), "ortools", Limits(time_s=60, mem_mib=4096), seed=1)
+for item in run([Submission(spec, key="my-run-42")], jobs=4):
+    print(item.key, item.result.status, item.result.walltime_s)
+```
+
+[Using cpbenchy from your framework](/guides/backend/) has a full example and the details.
+
+## Implementation
+
+<PackageSource id="backend" />

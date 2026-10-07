@@ -1,0 +1,33 @@
+---
+title: "inline"
+description: "Runs inside your own program, to debug plugins step by step."
+sidebar:
+  hidden: true
+---
+
+<PackageHeader id="inline" />
+
+## What it does
+
+Runs the worker inside your own process, one run at a time, without limits. Breakpoints in worker
+plugins work, so it is the way to debug a plugin step by step.
+
+## Use it
+
+<CodeGroup titles={["Python", "Command line"]}>
+
+```python
+import cpbenchy
+
+cpbenchy.run("instance.opb", solvers=["ortools"], time_limit=60, executor="inline")
+```
+
+```sh
+cpbenchy run instance.opb -s ortools -t 60 --executor inline
+```
+
+</CodeGroup>
+
+## Implementation
+
+<PackageSource id="inline" />

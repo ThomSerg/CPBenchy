@@ -1,0 +1,305 @@
+---
+title: Writing an observer
+description: Step by step, from one method to a complete observer, then every callback, and how to use and pass data between the worker and the parent.
+sidebar:
+  order: 2
+---
+
+<Aside type="caution" title="Under construction">
+  Writing plugins is still being worked on: the hooks, the `Observer` and `Loader` classes and these
+  pages may change. To use the plugins and observers that come with cpbenchy, see the
+  [library](/library/).
+</Aside>
+
+An observer is a class with methods that cpbenchy calls during each run, such as when it finishes.
+Subclass `cpbenchy.Observer` and write only the methods you need. The others do nothing.
+
+This page builds one observer, `SolverTime`, in three steps. CPMpy measures how long the solver itself
+takes, and cpbenchy measures how long `solve()` takes. `SolverTime` compares the two, so you can see
+how much of the solve time goes to CPMpy instead of the solver.
+
+## Step by step
+
+<Steps>
+  <Step title="Record something about each run">
+    `on_finish(ctx)` is called in the worker at the end of each run, with the run as `ctx`.
+    `ctx.solver` is the CPMpy solver, and `ctx.record(key, value)` adds a value to the run's result:
+
+    ```python title="solver_time.py"
+    import cpbenchy
+
+    class SolverTime(cpbenchy.Observer):
+        def on_finish(self, ctx):
+            # ctx.solver is None when loading the instance failed
+            if ctx.solver is not None:
+                ctx.record("solver_time_s", ctx.solver.status().runtime)
+    ```
+
+    <CodeGroup titles={["Python", "Command line"]}>
+
+    ```python
+    import cpbenchy
+    from solver_time import SolverTime
+
+    results = cpbenchy.run("instances/", solvers=["ortools", "exact"], time_limit=60, plugins=[SolverTime()])
+    print(results[0].solve_s, results[0].extra["solver_time_s"])
+    ```
+
+    ```sh
+    cpbenchy run instances/ -s ortools -s exact -t 60 -p solver_time.py
+    cpbenchy show --csv          # with an extra.solver_time_s column
+    ```
+
+    </CodeGroup>
+
+    Every result now has `extra["solver_time_s"]`, stored with the rest of the result.
+  </Step>
+  <Step title="Summarise over all runs">
+    `on_result(run, result)` is called in the parent as each run finishes, and `on_session_end(session)`
+    once at the end. The parent keeps one observer object for the whole experiment, so it can collect
+    totals on `self`:
+
+    ```python
+    class SolverTime(cpbenchy.Observer):
+        def __init__(self):
+            self.totals = {}  # solver -> [measured, reported]
+
+        # in the worker, as in step 1
+        def on_finish(self, ctx):
+            if ctx.solver is not None:
+                ctx.record("solver_time_s", ctx.solver.status().runtime)
+
+        # in the parent, after each run
+        def on_result(self, run, result):
+            reported = result.extra.get("solver_time_s")
+            if reported is not None and result.solve_s:
+                totals = self.totals.setdefault(result.solver, [0.0, 0.0])
+                totals[0] += result.solve_s
+                totals[1] += reported
+
+        # in the parent, at the end
+        def on_session_end(self, session):
+            for solver, (measured, reported) in sorted(self.totals.items()):
+                print(f"{solver}: the solver itself took {reported / measured:.0%} of the solve time")
+    ```
+
+    ```
+    exact: the solver itself took 94% of the solve time
+    ortools: the solver itself took 70% of the solve time
+    ```
+
+    The value recorded in the worker arrives in the parent as `result.extra["solver_time_s"]`. That is
+    how the two sides pass data.
+  </Step>
+  <Step title="Add an argument">
+    Constructor arguments make an observer configurable. Here, `warn_below` lists the runs where the
+    solver took less than that share of the solve time:
+
+    ```python
+        def __init__(self, warn_below=None):
+            self.warn_below = warn_below
+            self.totals = {}
+
+        def on_result(self, run, result):
+            ...
+            if self.warn_below is not None and reported / result.solve_s < self.warn_below:
+                print(f"{result.solver} on {result.instance}: the solver took only {reported / result.solve_s:.0%}")
+    ```
+
+    <CodeGroup titles={["Python", "Command line"]}>
+
+    ```python
+    cpbenchy.run("instances/", solvers=["ortools", "exact"], time_limit=60, plugins=[SolverTime(warn_below=0.5)])
+    ```
+
+    ```sh
+    cpbenchy run instances/ -s ortools -s exact -t 60 -p "solver_time.py:SolverTime(warn_below=0.5)"
+    ```
+
+    </CodeGroup>
+
+    The arguments must be Python literals: strings, numbers, booleans, `None`, and lists, tuples or
+    dicts of these. That is because the worker creates the observer again, from the same arguments.
+  </Step>
+</Steps>
+
+<details>
+<summary>The complete `solver_time.py`</summary>
+
+```python title="solver_time.py"
+import cpbenchy
+
+
+class SolverTime(cpbenchy.Observer):
+    """How much of the solve time the solver itself spends, per solver; the rest is CPMpy's."""
+
+    def __init__(self, warn_below=None):
+        self.warn_below = warn_below
+        self.totals = {}  # solver -> [measured solve time, time the solver reported]
+
+    def on_finish(self, ctx):
+        if ctx.solver is not None:
+            ctx.record("solver_time_s", ctx.solver.status().runtime)
+
+    def on_result(self, run, result):
+        reported = result.extra.get("solver_time_s")
+        if reported is None or not result.solve_s:
+            return
+        totals = self.totals.setdefault(result.solver, [0.0, 0.0])
+        totals[0] += result.solve_s
+        totals[1] += reported
+        if self.warn_below is not None and reported / result.solve_s < self.warn_below:
+            print(f"{result.solver} on {result.instance}: the solver took only {reported / result.solve_s:.0%}")
+
+    def on_session_end(self, session):
+        for solver, (measured, reported) in sorted(self.totals.items()):
+            print(f"{solver}: the solver itself took {reported / measured:.0%} of the solve time")
+```
+
+</details>
+
+## The callbacks
+
+Write any of these. Each is called with the run, either as it is in the worker (`ctx`) or as the
+parent sees it (`run`, `result`).
+
+**In the worker**, in this order. These see the model and the solver, and count toward the run's time
+and memory:
+
+| Method | Called | Use it to |
+|---|---|---|
+| `on_load(ctx)` | to load the instance | return a CPMpy model to load it yourself. Prefer a [loader](/plugins/loaders/) for this |
+| `on_solver(ctx)` | to create the solver | return a solver for `ctx.model` to create it yourself |
+| `solver_args(ctx)` | before solving | return a dict of extra arguments for `solve()`; the run's own `params` win on a conflict |
+| `on_solution(ctx, objective)` | for each solution found while solving | follow the search. Only for optimization problems, with solvers that report solutions as they go, such as OR-Tools |
+| `on_finish(ctx)` | at the end of the run, also after an error | check the answer, record values with `ctx.record`, write files with `ctx.artifact` |
+
+**In the parent**, in this order. These see results, at no cost to the runs:
+
+| Method | Called | Use it to |
+|---|---|---|
+| `on_session_start(session)` | before the first run; `session.runs` are the runs to do | set up: open a file, a connection |
+| `on_start(run)` | as each run starts | follow progress |
+| `on_event(run, event)` | for each event from the run's worker, live | follow a run as it goes: `event.kind`, `event.data`, `event.t` (seconds since the run started) |
+| `on_result(run, result)` | as each run ends, before its result is stored | add to `result.extra`, print, collect totals |
+| `on_session_end(session)` | at the end, also when interrupted; `session.results` are this session's results | print a summary, close what you opened |
+
+What `ctx`, `run`, `result` and `session` hold is in the [hook reference](/plugins/hooks/#what-hooks-get).
+The ones you will use most:
+
+| | |
+|---|---|
+| `ctx.spec` | what the run is: `instance` (`name`, `path`), `solver`, `params`, `seed`, `limits` |
+| `ctx.model`, `ctx.solver` | the CPMpy model and solver, once they exist |
+| `ctx.status`, `ctx.objective` | the outcome, final in `on_finish` |
+| `ctx.record(key, value)` | add a JSON-safe value to the result, as `result.extra[key]` |
+| `ctx.emit(kind, **data)` | send an event to the parent, now |
+| `ctx.elapsed()`, `ctx.time_left()` | seconds since the run started, and until its time limit |
+| `result` | the run's [result record](/reference/result-record/): `status`, `objective`, `walltime_s`, `solved`, `extra`, ... |
+
+## The worker and the parent
+
+The worker and the parent are different processes, so each has its own copy of the observer:
+
+- **In the worker**, the observer is created again for each run, from its constructor arguments. So
+  `self` starts fresh in each run, and anything set on `self` there stays in that run.
+- **In the parent**, it is created once, and lives through the whole experiment.
+
+So the parent never sees what the worker sets on `self`. To pass data from the worker to the parent:
+
+- **`ctx.record(key, value)`** puts it in the result. The parent reads it as `result.extra[key]` in
+  `on_result`, and it is stored with the result.
+- **`ctx.emit(kind, **data)`** sends an event right away. The parent gets it in `on_event`, while the
+  run is still going:
+
+```python
+class Progress(cpbenchy.Observer):
+    def on_finish(self, ctx):                                          # in the worker
+        ctx.emit("size", constraints=len(ctx.model.constraints))
+
+    def on_event(self, run, event):                                    # in the parent
+        if event.kind == "size":
+            print(f"{run.spec.instance.name}: {event.data['constraints']} constraints, at {event.t:.2f}s")
+```
+
+cpbenchy's own events have the kinds `loaded`, `transformed`, `solving`, `solution` and `result`.
+
+An observer with only parent methods is never sent to the worker. Its arguments can then be anything,
+such as an open database connection, and it can be defined anywhere, a notebook included.
+
+## Using an observer
+
+<CodeGroup titles={["Python", "Command line"]}>
+
+```python
+import cpbenchy
+from solver_time import SolverTime
+
+cpbenchy.run("instances/", solvers=["ortools"], time_limit=60, plugins=[SolverTime(warn_below=0.5)])
+
+exp = cpbenchy.Experiment("results/x", time_limit=60, plugins=[SolverTime()])
+```
+
+```sh
+cpbenchy run instances/ -s ortools -t 60 -p solver_time.py         # every observer in the file
+cpbenchy run instances/ -s ortools -t 60 -p "solver_time.py:SolverTime(warn_below=0.5)"
+cpbenchy run instances/ -s ortools -t 60 -p no:SolverTime          # turn one off
+```
+
+</CodeGroup>
+
+It can also be listed in `cpbenchy.toml` or in [rules](/guides/rules/), as
+`plugins = ["solver_time.py:SolverTime(warn_below=0.5)"]`. And every observer that a
+`cpbenchy_conf.py` in the current directory defines is used automatically.
+
+<Aside type="caution" title="In a script, guard the experiment">
+  The worker imports the file that defines the observer, to create it again. If that file is your
+  script, its top-level code runs again in each run, experiment included. So start the experiment
+  under `if __name__ == "__main__":`
+
+  ```python
+  class SolverTime(cpbenchy.Observer):
+      ...
+
+  if __name__ == "__main__":
+      cpbenchy.run("instances/", solvers=["ortools"], time_limit=60, plugins=[SolverTime()])
+  ```
+
+  Without it, the runs end in an error that says so. Or define observers in a file of their own and
+  import them, as the steps above do.
+</Aside>
+
+## More you can do
+
+**Only some instances.** Set `formats` to observe only runs on instances of those formats. The
+built-in competition output observers do this:
+
+```python
+class XCSP3Check(cpbenchy.Observer):
+    formats = ("xcsp3",)
+```
+
+**Files per run.** `ctx.artifact(name)` is a path of the run's own, next to its log. Write to it in
+the worker, then read it in the parent as `run.artifact(name)`. See
+[`SaveSolution`](/library/save-solution/).
+
+**Settings for the solver.** Return `solve()` arguments from `solver_args`, for example only for one
+solver. cpbenchy already sets the time limit, the seed and the number of cores (threads):
+
+```python
+class Linearize(cpbenchy.Observer):
+    def solver_args(self, ctx):
+        if ctx.spec.solver == "ortools":
+            return {"linearization_level": 2}
+```
+
+**Changing the outcome.** `on_finish` may change `ctx.status` and `ctx.error`, for example to turn a
+wrong answer into an `error`. Other observers may have run their `on_finish` already, and then don't
+see the change. When they must, write a plugin with a `tryfirst` hook instead, as
+[`CheckSolutions`](/library/check-solutions/) does.
+
+**Learning from the built-in observers.** `src/cpbenchy/observers.py` has live output from the worker
+(`on_solution`), final output (`on_finish`), files per run, and a check in the parent after each run
+(`on_result`). Each of them has a page in the [library](/library/), with its code.
+
+Next: [test your observer and share it](/plugins/testing/).

@@ -1,0 +1,44 @@
+---
+title: "cpbenchy solve"
+description: "Solves a single instance the way a competition runs a solver."
+sidebar:
+  hidden: true
+---
+
+<PackageHeader id="solve" />
+
+## What it does
+
+Solves one instance in its own process, the way a competition runs a solver: the competition's own
+tool limits and measures it, and reads its output. A submission's launchers run it.
+
+- Competition output (from the rules' output observer) goes to stdout; progress and a summary come as
+  comment lines (`c ...`).
+- At its time limit (wall or CPU), or on SIGTERM, it prints the best solution it found.
+- Time counts from when the process started, as the competition counts it.
+
+## Use it
+
+```sh
+cpbenchy solve instance.xml -s ortools --rules xcsp3-2025 --cpu-time-limit 60 --seed 7
+```
+
+```
+c [cpbenchy     0.81s] loading instance.xml
+o 12
+o 9
+s OPTIMUM FOUND
+v <instantiation type="optimum" cost="9">
+...
+c cpbenchy: optimal, objective 9; parse 0.07s, transform 0.00s, solve 0.38s
+```
+
+## Options
+
+The options of `cpbenchy run`, for one instance, one solver and at most one seed: `-s`, `-t`,
+`--cpu-time-limit`, `-m`, `--cores`, `--seed`, `-P`, `--loader`, `-p`, `--rules`. Files of the run go
+to a fresh directory under `$TMPDIR`.
+
+## Implementation
+
+<PackageSource id="solve" />

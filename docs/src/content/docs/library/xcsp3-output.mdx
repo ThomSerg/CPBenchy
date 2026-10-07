@@ -1,0 +1,74 @@
+---
+title: "XCSP3Output"
+description: "Answers in the format of the XCSP3 competition, and optionally checked by its official checker."
+sidebar:
+  hidden: true
+---
+
+<PackageHeader id="xcsp3-output" />
+
+## What it does
+
+Writes what a solver in the [XCSP3 competition](https://xcsp.org/competitions) prints, for each run on
+an XCSP3 instance, with the solution as an XML `<instantiation>` of the instance's variables:
+
+```
+o 12
+o 9
+s OPTIMUM FOUND
+v <instantiation type="optimum" cost="9">
+v   <list>x[0] x[1] x[2] y</list>
+v   <values>2 1 0 3</values>
+v </instantiation>
+```
+
+Each competition specifies what a solver prints:
+- `o` lines with each better objective value, while it solves
+- an `s` line with its answer: `OPTIMUM FOUND`, `SATISFIABLE`, `UNSATISFIABLE` or `UNKNOWN`
+- `v` lines with the solution
+
+The output goes to each run's `logs/<run_id>.xcsp3.out`, written inside the measured run, as a
+competition solver would print it, so it costs the run the time it would cost in the competition. A run
+that is killed keeps its `o` lines. Under [`cpbenchy solve`](/library/solve/), the output goes to stdout,
+where competitions read it.
+
+Given the competition's solution checker, it also checks every solution with it, after the run and
+outside its measured time.
+
+## Use it
+
+<CodeGroup titles={["Python", "Command line"]}>
+
+```python
+import cpbenchy
+from cpbenchy import observers
+
+cpbenchy.run("xcsp3/", solvers=["ortools"], time_limit=60, plugins=[observers.XCSP3Output()])
+cpbenchy.run("xcsp3/", solvers=["ortools"], time_limit=60, plugins=[observers.XCSP3Output(checker="checker.jar")])
+```
+
+```sh
+cpbenchy run xcsp3/ -s ortools -t 60 -p cpbenchy.observers:XCSP3Output
+cpbenchy run xcsp3/ -s ortools -t 60 -p "cpbenchy.observers:XCSP3Output(checker='checker.jar')"
+```
+
+</CodeGroup>
+
+The [XCSP3 rules](/library/xcsp3-2025/) enable it, with the competition's limits.
+
+## Options
+
+| Argument | |
+|---|---|
+| `checker` | path of the [XCSP3 solution checker](https://xcsp.org/tools/) jar; needs `java`. Default: no check |
+
+## What it records
+
+| | |
+|---|---|
+| `logs/<run_id>.xcsp3.out` | the competition output |
+| `extra["xcsp3_check"]` | with a checker: `"OK"`, or what the checker says is wrong |
+
+## Implementation
+
+<PackageSource id="xcsp3-output" />

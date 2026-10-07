@@ -1,0 +1,55 @@
+---
+title: Installation
+description: Install cpbenchy and the solvers you want to compare, and check that your machine is ready.
+sidebar:
+  order: 1
+---
+
+cpbenchy needs Linux and Python 3.10 or later.
+
+<Steps>
+  <Step title="Install cpbenchy">
+    ```sh
+    pip install cpbenchy      # or: uv add cpbenchy
+    ```
+
+    It comes with CPMpy and OR-Tools.
+  </Step>
+  <Step title="Install the solvers you want to compare">
+    Install additional solvers through [CPMpy](https://cpmpy.readthedocs.io/en/latest/modeling.html):
+
+    ```sh
+    pip install cpmpy[exact,highs]
+    ```
+  </Step>
+  <Step title="Check your machine">
+    ```sh
+    cpbenchy doctor
+    ```
+
+    ```
+    cpbenchy 0.1.0, cpmpy 1.1.0, python 3.13.11
+    runexec:  ok, runs get cgroup limits and measurements (executor: runlimit)
+    machine:  20 CPUs, 14 physical cores, 1 NUMA node(s), 31717 MiB memory
+    solvers:  ortools 9.15.6755, exact 2.2.1, highs 1.14.0
+              not installed: z3, minizinc, gcs, pysat, ...
+    ```
+
+    `runexec: ok` means cpbenchy can measure runs reliably. If it says otherwise, cpbenchy still
+    works, with less precise limits: see [Measurement and limits](/guides/limits/#executors).
+  </Step>
+</Steps>
+
+## Alpha
+
+cpbenchy is in alpha: until version 1.0, a new version may change commands, options, the Python API
+or the result format. Pin the version in projects that depend on it, and read the changes before
+upgrading:
+
+```sh
+pip install "cpbenchy==0.1.*"      # or: uv add "cpbenchy==0.1.*"
+```
+
+Results record the cpbenchy version that made them, in `run.json`.
+
+Next: [your first benchmark](/getting-started/first-benchmark/).

@@ -1,0 +1,85 @@
+---
+title: "cpbenchy check"
+description: "Checks the solutions of finished experiments again, long after they ran."
+sidebar:
+  hidden: true
+---
+
+<PackageHeader id="solution-checker" />
+
+## What it does
+
+Checks the solutions of runs that already finished, from what they wrote, without running anything
+again. It loads each model again, as the run did: from the run's `logs/<run_id>.job.json`, with its
+loader, and with relative paths taken from the directory the run started in. Each solution is read from
+the run's `solution.json` ([`SaveSolution`](/library/save-solution/)) or its competition output.
+
+The checks are the same as [`CheckSolutions`](/library/check-solutions/)' during a run: assignment,
+domains, constraints, objective.
+
+## Use it
+
+Save the solutions of a run, then check them:
+
+<CodeGroup titles={["Python", "Command line"]}>
+
+```python
+import cpbenchy
+from cpbenchy import observers
+from cpbenchy.check import recheck
+
+cpbenchy.run("instances/", solvers=["ortools", "exact"], time_limit=60, out="cpbenchy-results",
+             plugins=[observers.SaveSolution()])
+
+for run, check in recheck("cpbenchy-results"):
+    if not check.valid and not check.skipped:
+        print(run.solver, run.instance, check)
+```
+
+```sh
+cpbenchy run instances/ -s ortools -s exact -t 60 -p cpbenchy.observers:SaveSolution
+cpbenchy check                    # lists invalid solutions; exit code 1 if there are any
+cpbenchy check -v                 # every run, with every violation
+cpbenchy check --write            # also store each verdict in results.jsonl, as extra["check"]
+```
+
+</CodeGroup>
+
+To check a solution from anywhere, against a CPMpy model:
+
+```python
+from cpbenchy.check import check_solution
+
+result = check_solution(model, {"x": 3, "y": 4}, objective=3)
+print(result.valid, result.summary())      # True VALID, objective 3
+```
+
+## Options
+
+| `cpbenchy check` | |
+|---|---|
+| `OUT` | output directory (default `cpbenchy-results`) |
+| `--loader REF` | load the models with this loader instead of the runs' own |
+| `--write` | store each verdict in `results.jsonl`, as `extra["check"]` |
+| `-v` | list every run and every violation, not only the invalid runs |
+
+| `check_solution(model, solution, objective=None, *, ignore_aux=True, stop_on_unassigned=True)` | |
+|---|---|
+| `solution` | `{name: value}` |
+| `objective` | the objective the solver declared, compared with the computed one |
+| `ignore_aux` | don't require values for CPMpy's auxiliary variables |
+| `stop_on_unassigned` | stop after the assignment check if variables have no value |
+
+It returns a `CheckResult`: `valid`, `violations`, `warnings`, `objective`, `skipped` (why nothing was
+checked), `summary()`, `to_dict()`.
+
+## Notes
+
+Runs are skipped, with the reason, when they had no solution, wrote no solution file, or their model
+failed to load. If the runs loaded models in a way their job file doesn't record (a
+`cpbenchy_worker_load` hook in `cpbenchy_conf.py`, for example), pass `--loader`. CNF solutions are
+only numbered if the run used [`SATOutput`](/library/sat-output/).
+
+## Implementation
+
+<PackageSource id="solution-checker" />

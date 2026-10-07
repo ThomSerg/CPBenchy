@@ -1,0 +1,60 @@
+---
+title: "--terminate"
+description: "Stops runs at their time limit the way competitions do, so they still give their best answer."
+sidebar:
+  hidden: true
+---
+
+<PackageHeader id="terminate" />
+
+## What it does
+
+By default, a solver is told how much time it has, and it is killed if it is still running a grace
+period after that; a killed run has no answer. Competitions stop solvers differently: at the time
+limit, the solver gets SIGTERM and must print the best solution it found, and a second later it gets
+SIGKILL. `--terminate` makes runs behave like that.
+
+At its time limit (wall or CPU), or on SIGTERM, a run reports the last solution its solver found:
+competition output gets its `s` and `v` lines, [`CheckSolutions`](/library/check-solutions/) checks it,
+and the run ends as `feasible` with that objective, or as `timeout` without one.
+
+## Use it
+
+<CodeGroup titles={["Python", "Command line"]}>
+
+```python
+import cpbenchy
+from cpbenchy import observers
+
+cpbenchy.run("instances/", solvers=["ortools"], time_limit=60, plugins=[observers.PBOutput()],
+             args=["--terminate", "--grace", "1"])
+```
+
+```sh
+cpbenchy run instances/ -s ortools -t 60 --terminate --grace 1 -p cpbenchy.observers:PBOutput
+```
+
+</CodeGroup>
+
+Rules switch it on with `terminate = true`, and [`cpbenchy solve`](/library/solve/) always has it.
+
+## What it records
+
+| What the run had | `status` | `termination` |
+|---|---|---|
+| a solution of an optimization problem | `feasible`, with its objective | `walltime`, `cputime` or `signal` |
+| no solution | `timeout` | same |
+
+## Notes
+
+- The solutions are those the solver reports through its solution callback; satisfaction problems and
+  solvers without one have nothing to report until they finish.
+- Keeping each solution costs a little time per solution, as it does for competition solvers.
+- A watcher thread stops the run, so a solver that holds Python's GIL while it searches can't be
+  stopped this way; native solvers release it. Others are killed after the grace period.
+
+[Measurement and limits](/guides/limits/#stopping-runs-at-their-limit) has the details.
+
+## Implementation
+
+<PackageSource id="terminate" />

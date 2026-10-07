@@ -1,0 +1,99 @@
+---
+title: Rules
+description: Named, shareable experiment setups, such as a competition track's limits, signals and output, in one TOML file.
+sidebar:
+  order: 6
+---
+
+Rules fix how an experiment is run: time and memory limits, cores, how runs are stopped, the output
+they write. Write them down once, in a TOML file, and anyone can run under the same rules:
+
+```sh
+cpbenchy run xcsp3/ -s ortools -s exact --rules xcsp3-2025      # as in the XCSP3 competition
+cpbenchy run instances/ -s ortools --rules our-setup.toml        # your own
+```
+
+Results record the rules each run followed (`rules`), and `run.json` holds the rules themselves.
+
+## Built-in rules
+
+cpbenchy has the rules of recent competitions. `cpbenchy rules` lists them and `cpbenchy rules NAME`
+shows one, with the sources of its numbers. The [library](/library/#rules) has a page for each:
+
+| Rules | Limits | Stopped | Output |
+|---|---|---|---|
+| `xcsp3-2025` | 30 min CPU, 45 min wall, 64 GiB, 1 core | SIGTERM, SIGKILL 1 s later | `XCSP3Output` |
+| `xcsp3-2025-fast` | 3 min CPU, 4.5 min wall, 64 GiB, 1 core | same | `XCSP3Output` |
+| `xcsp3-2025-parallel` | 30 min wall, 64 GiB, 4 cores | same | `XCSP3Output` |
+| `pb26` | 1 h CPU (and 1 h wall), 31 GB, 1 core | same | `PBOutput` |
+| `pb26-parallel` | 1 h wall, 31 GB, 8 cores | same | `PBOutput` |
+
+Check the rules before you rely on them: competitions change from year to year.
+
+## Your own rules
+
+A rules file has a `name`, an optional `description` and `url`, its `[settings]`, and optionally an
+`[interface]`: how a competition calls a solver, for [submissions](/guides/submissions/). Settings are
+`cpbenchy run` options by their long names, as in `cpbenchy.toml`. `plugins` lists `-p` values.
+
+```toml
+name = "lab-cop-2026"
+description = "Our COP benchmark: 10 minutes, 8 GiB, one core, best solution reported at the limit"
+url = "https://gitlab.example.org/lab/benchmarks"
+
+[settings]
+time-limit = 600
+mem-limit = 8192
+cores = 1
+terminate = true
+grace = 5
+seeds = [1, 2, 3]
+plugins = ["cpbenchy.observers:SaveSolution", "cpbenchy.observers:CheckSolutions"]
+```
+
+Start from a built-in one with `cpbenchy rules xcsp3-2025 > my-rules.toml`. Share the file and others 
+can run it with `--rules my-rules.toml`.
+
+To follow rules in every run of a project, put `rules = "my-rules.toml"` in `cpbenchy.toml`. In Python,
+pass `rules=`:
+
+```python
+exp = cpbenchy.Experiment("results/xcsp3", rules="xcsp3-2025", jobs=4)
+exp.add("xcsp3/", solvers=["ortools", "exact"])  # limits, cores and output from the rules
+exp.run()
+```
+
+## Changing rules
+
+Options you give explicitly win over the rules: `-t 60` gives a time limit of 60 seconds whatever the
+rules say. The run then no longer follows the rules exactly. cpbenchy says so when it starts, records
+the runs' rules as `"<name> (modified)"`, and lists what differs in `run.json`.
+
+```sh
+cpbenchy run xcsp3/ -s ortools --rules xcsp3-2025 --scale 0.1 -m 8192
+```
+
+```
+rules xcsp3-2025: XCSP3 Competition 2025, sequential tracks (CSP, COP, Mini CSP, Mini COP)
+not following the rules for: mem-limit=8192, scale=0.1
+```
+
+`--scale` multiplies the time limits (wall and CPU), to try rules quickly before the real experiment. It
+leaves the memory limit as it is: on a machine with less memory than the rules ask for, give a lower one
+with `-m`.
+
+Settings come from, in order of precedence:
+1. what you give explicitly: on the command line, or as keyword arguments in Python
+2. the rules
+3. `cpbenchy.toml`
+4. the options' defaults
+
+## Stopping runs as competitions do
+
+To enter a competition with a solver run under its rules, see [Competition
+submissions](/guides/submissions/).
+
+Competitions stop a solver at its time limit with SIGTERM, so it can print the best solution it found,
+and SIGKILL it a second or two later. Rules do this with `terminate = true` and `grace`, and the
+`--terminate` option does the same for any run. See [Measurement and
+limits](/guides/limits/#stopping-runs-at-their-limit).

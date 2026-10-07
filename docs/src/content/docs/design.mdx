@@ -1,0 +1,83 @@
+---
+title: Design
+description: The principles behind cpbenchy, the seams for remote execution, and the plan for reproducible setups with FM-Weck.
+sidebar:
+  order: 99
+  hidden: true
+---
+
+cpbenchy replaces the benchmark runner that lived in a CPMpy fork (`cpmpy/tools/benchmark/cpbenchy`, branch
+`xcsp3_26` in CP26_cpmpy_tool). That runner's core idea, observers that can change how a run behaves,
+is what this library is built around. The code around it was hard to maintain:
+- observers shared state through attributes on the runner
+- the code swapped stdout, signal handlers and rlimits globally
+- observers were rebuilt from strings
+- solver settings were a long if/elif chain
+- competition-specific code sat in the core
+- there were no tests
+
+## Principles
+
+- **A small core.** The core is a few hundred lines per concern: what to run (`spec.py`), the record of a
+  run (`result.py`), the session loop (`session.py`), executors, the store. Anything specific to one use
+  case belongs in a plugin built on the hooks. Examples are split load/solve phases with a model cache,
+  solver environments per version, competition output formats, and solution checkers.
+- **Built-in behaviour is plugins.** Collection, executor choice, resuming, solver settings, the terminal
+  output and solution recording are all registered as plugins, so they can be replaced or switched off
+  (`-p no:NAME`), and they show what a plugin can do.
+- **The worker process is the unit of measurement.** One run is one process, which loads, transforms
+  and solves, under the executor's limits. The worker imports only the standard library, pluggy and
+  CPMpy, runs on Python 3.10 (older solver environments), and never touches global state: its output
+  goes to the run's log file.
+- **Plain data at the boundaries.** The `RunSpec` and the job file are JSON, the worker reports through
+  JSON events, and results are one JSON record per line. Nothing is pickled across processes, so the
+  boundaries can later cross machines.
+
+## Results
+
+Results follow the usual practice for experiment data: a tidy table with one record per run, appended to
+`results.jsonl` as runs finish. Appending makes results readable while a session runs and safe if it
+crashes, and it makes resuming trivial. A provenance snapshot (`run.json`: options, versions, host,
+executor, plugins) and the raw logs sit beside the table.
+
+A run's id hashes what is measured (instance, solver, parameters, seed, cores, limits). It does not
+include how the run is scheduled.
+
+## Seams for later
+
+- **Executors** are the only place that knows how a worker process is started:
+  `cpbenchy_make_executor` returns one. Remote execution (cpmpy-farm as a backend) and containers plug in
+  here.
+- **Workers in other environments.** The worker is started with `run.cmd` (by default the current Python),
+  which `cpbenchy_run_start` can change, for example to a venv per solver version. The worker needs only
+  cpbenchy's source tree on its path (`PYTHONPATH`), plus pluggy and CPMpy.
+
+## Reproducible setups with FM-Weck (not built yet)
+
+[FM-Weck](https://gitlab.com/sosy-lab/software/fm-weck) (SoSy-Lab, `pip install fm-weck`) runs tools
+described in [FM-Tools](https://gitlab.com/sosy-lab/benchmarking/fm-tools) YAML metadata inside pinned OCI
+containers (Podman or Docker).
+- **FM-Tools metadata.** Each tool version records a Zenodo DOI for the tool archive, container images
+  (`full_container_images`, or `base_container_images` plus `required_ubuntu_packages`), and a BenchExec
+  tool-info module with its options.
+- **Modes.** It has `run`, `expert` and `shell`, and a `runexec` mode that runs BenchExec's runexec
+  *inside* the container with the mounts you give it.
+- **Archiving and remote use.** It can push, publish and pull container images to and from Zenodo, and
+  it has a gRPC server / remote-run mode.
+
+How cpbenchy can use it without changes to the core:
+
+1. **An `fmweck` executor plugin.** It runs the worker as
+   `fm-weck runexec --image <image> -- python -m cpbenchy.worker job.json`, with the output directory
+   mounted writable.
+   - The image pins the operating system, Python, CPMpy and the solver binaries.
+   - runexec still measures inside the container.
+   - Publishing the image on Zenodo and recording its DOI and digest in `run.json` makes an experiment
+     re-runnable years later from `run.json` and the image.
+2. **CPMpy solvers as FM-Tools entries.** Each entry would list versions, DOIs and images, plus a small
+   tool-info module, e.g. `cpmpy-ortools.yml`. Then `fm-weck run cpmpy-ortools:9.12 instance.xml` works
+   for anyone, without cpbenchy. The solver versions of the CP museum fit this well.
+3. **fm-weck's remote server** is a candidate for remote execution, next to cpmpy-farm.
+
+What this needs from the core is already there: self-contained JSON run specs, provenance in `run.json`,
+and executors as the only place that starts processes.

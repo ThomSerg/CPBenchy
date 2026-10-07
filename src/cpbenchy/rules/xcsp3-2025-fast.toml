@@ -1,0 +1,19 @@
+name = "xcsp3-2025-fast"
+description = "XCSP3 Competition 2025, Fast COP track: best solution, sequential, 3 minutes"
+url = "https://arxiv.org/abs/2511.06918"
+
+# The limits as run (proceedings, p. 105); SIGTERM, then SIGKILL one second later (call for solvers,
+# https://www.cril.univ-artois.fr/~lecoutre/compets/callXCSP25.pdf).
+[settings]
+cpu-time-limit = 180        # 3 minutes of CPU time
+time-limit = 270            # 4.5 minutes of wall clock time
+mem-limit = 65536           # 64 GiB
+cores = 1
+terminate = true
+grace = 1
+plugins = ["cpbenchy.observers:XCSP3Output"]
+
+# How the competition calls a solver: a command line of your choice, with these placeholders
+# (`cpbenchy submission` builds a launcher that takes them, in this order). TIMELIMIT is CPU time.
+[interface]
+arguments = ["BENCHNAME", "RANDOMSEED", "TIMELIMIT", "MEMLIMIT", "NBCORE", "TMPDIR"]

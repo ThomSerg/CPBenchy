@@ -1,0 +1,35 @@
+---
+title: "param_sweep.py"
+description: "Finds the best settings for a solver by trying several on the same instances."
+sidebar:
+  hidden: true
+---
+
+<PackageHeader id="param-sweep" />
+
+## What it does
+
+Tunes a solver: runs OR-Tools with several parameter settings on the same instances, then shows per
+setting how many instances were solved and how fast. All settings are one experiment, so adding a
+setting and running again only runs the new setting.
+
+## Use it
+
+```sh
+python examples/scripts/param_sweep.py instances/ --out results/sweep --time-limit 60 --jobs 4
+```
+
+Edit `SETTINGS` in the script for your own settings and solver.
+
+## Options
+
+| Argument | |
+|---|---|
+| `sources` | instance files, directories or glob patterns |
+| `--out` | output directory |
+| `--time-limit` | seconds per run |
+| `--jobs` | runs in parallel |
+
+## Implementation
+
+<PackageSource id="param-sweep" />

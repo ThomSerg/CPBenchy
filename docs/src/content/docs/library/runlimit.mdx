@@ -1,0 +1,47 @@
+---
+title: "runlimit"
+description: "Runs each solver in isolation with strict limits and trustworthy measurements."
+sidebar:
+  hidden: true
+---
+
+<PackageHeader id="runlimit" />
+
+## What it does
+
+Runs every worker under BenchExec's `runexec`: cgroups enforce the memory limit and measure the CPU
+time and peak memory of the whole process tree, so measurements are reliable. Each parallel run gets its
+own physical cores and the memory of their NUMA node.
+
+It is the default wherever it works: `cpbenchy doctor` says whether it does.
+
+## Use it
+
+<CodeGroup titles={["Python", "Command line"]}>
+
+```python
+import cpbenchy
+
+cpbenchy.run("instances/", solvers=["ortools"], time_limit=60, jobs=8, executor="runlimit")
+cpbenchy.run("instances/", solvers=["ortools"], time_limit=60, args=["--container"])  # no network, read-only file system
+```
+
+```sh
+cpbenchy run instances/ -s ortools -t 60 -j 8 --executor runlimit
+cpbenchy run instances/ -s ortools -t 60 --container      # no network, read-only file system
+```
+
+</CodeGroup>
+
+## Options
+
+| Option | |
+|---|---|
+| `--grace` | seconds after a time limit before a run is killed (default 10) |
+| `--terminate` | stop runs at their limit, with SIGTERM at the CPU time limit; see [`--terminate`](/library/terminate/) |
+| `--hyperthreading` | let runs use hyperthread siblings |
+| `--container` | no network, read-only file system except the output directory |
+
+## Implementation
+
+<PackageSource id="runlimit" />

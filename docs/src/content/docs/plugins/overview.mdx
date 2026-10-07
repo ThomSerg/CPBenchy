@@ -1,0 +1,104 @@
+---
+title: Extending cpbenchy
+description: The three ways to extend cpbenchy (observers, loaders and plugins), which to choose, and how a run works.
+sidebar:
+  order: 1
+  label: Overview
+---
+
+<Aside type="caution" title="Under construction">
+  Writing plugins is still being worked on: the hooks, the `Observer` and `Loader` classes and these
+  pages may change. To use the plugins and observers that come with cpbenchy, see the
+  [library](/library/).
+</Aside>
+
+cpbenchy runs solvers and measures them. Everything around that is yours to change: what is recorded
+about each run, what is printed, how instances become models, which runs happen, and where they run.
+First check the [library](/library/), because what you need may exist already.
+
+## Three ways to extend cpbenchy
+
+| | Use it to | Looks like |
+|---|---|---|
+| **[An observer](/plugins/observers/)** | record something about each run, print or save results, react to solutions as they are found, or check answers | a class with methods such as `on_finish(ctx)` and `on_result(run, result)` |
+| **[A loader](/plugins/loaders/)** | benchmark instances in a format of your own, or models you generate | a class with one method: `load(instance)` returns a CPMpy model |
+| **[A plugin with hooks](/plugins/writing-plugins/)** | add options, choose which runs happen, replace a step (loading, solving), or run the workers elsewhere | functions marked `@cpbenchy.hookimpl`, named after the step they change |
+
+Start with an observer or a loader: they cover most needs, and a few lines do it. Plugins with hooks
+can change anything, but you need to know more about how cpbenchy works. Observers are plugins too, so
+you can switch to hooks later and keep everything else.
+
+```python title="constraints.py"
+import cpbenchy
+
+class Constraints(cpbenchy.Observer):
+    def on_finish(self, ctx):                         # at the end of each run
+        ctx.record("n_constraints", len(ctx.model.constraints))
+```
+
+<CodeGroup titles={["Python", "Command line"]}>
+
+```python
+import cpbenchy
+from constraints import Constraints
+
+results = cpbenchy.run("instances/", solvers=["ortools"], time_limit=60, plugins=[Constraints()])
+results[0].extra["n_constraints"]
+```
+
+```sh
+cpbenchy run instances/ -s ortools -t 60 -p constraints.py
+```
+
+</CodeGroup>
+
+## How a run works
+
+Knowing this makes everything else easy to follow. Each run happens in a process of its own, the
+**worker**, so that its time and memory can be measured and limited. The process you start, the
+**parent**, decides what to run, starts the workers, follows them and stores the results.
+
+```
+parent: cpbenchy run, or cpbenchy.run()          worker: one per run, measured and limited
+  collect instances, choose the runs
+  for each run:
+    start a worker  ───────────────────────────►  load the instance          (parse_s)
+                                                  create the solver          (transform_s)
+                                                  solve                      (solve_s)
+    follow it, live  ◄───── events ─────────────    each solution found
+                                                  finish: the result
+    store the result ◄──────────────────────────
+  print the summary
+```
+
+Your code can run on either side:
+
+- **In the worker**, it sees the model and the solver, and what it does counts toward the run's time
+  and memory.
+- **In the parent**, it sees each run's result as it comes in, and all of them at the end, at no cost
+  to the runs.
+
+The two sides are different processes, so they don't share variables. The worker passes data to the
+parent by recording it in the result, or by sending an event. The guides show both.
+
+## Where your code lives
+
+- **A `.py` file**, used with `-p file.py` on the command line, or `plugins=[...]` in Python. Every
+  observer the file defines is used.
+- **`cpbenchy_conf.py`** in the directory you run cpbenchy from: used automatically, handy for the
+  setup of one project.
+- **A package** with an entry point, used wherever it is installed. See
+  [testing and sharing](/plugins/testing/#sharing).
+
+Code that runs in the worker must be importable from a file, because the worker imports it again. An
+observer defined in a notebook works only if all its methods run in the parent.
+
+To use cpbenchy inside an experiment framework of your own, instead of extending it, see
+[from your framework](/guides/backend/).
+
+## Next
+
+- **[Writing an observer](/plugins/observers/)**: step by step, from one method to a complete observer.
+- **[Writing a loader](/plugins/loaders/)**: your own instance formats and generated models.
+- **[Plugins with hooks](/plugins/writing-plugins/)**: options, choosing runs, replacing steps.
+- **[Testing and sharing](/plugins/testing/)**: test what you wrote, and share it with others.

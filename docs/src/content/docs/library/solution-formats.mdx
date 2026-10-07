@@ -1,0 +1,52 @@
+---
+title: "cpbenchy.formats"
+description: "Turns solutions into the text formats competitions and file formats use, and back."
+sidebar:
+  hidden: true
+---
+
+<PackageHeader id="solution-formats" />
+
+## What it does
+
+The pieces the competition observers are made of, to write solutions as text in your own observers, and
+to read them back. Everything in it can be used inside the measured run.
+
+## Use it
+
+```python
+import cpbenchy
+from cpbenchy import formats
+
+class SolutionXML(cpbenchy.Observer):
+    def on_finish(self, ctx):
+        if ctx.status in ("optimal", "feasible"):
+            xml = formats.xcsp3_instantiation(formats.instance_variables(ctx.model), ctx.objective)
+            ctx.artifact("solution.xml").write_text(xml)
+```
+
+## Functions
+
+| Function | Returns |
+|---|---|
+| `instance_variables(model)` | the model's variables in order, without CPMpy's auxiliary ones |
+| `solution_dict(variables)` | `{name: value}`, with plain `bool`s and `int`s |
+| `assignment(variables, prefix="x")` | `{number: bool}` for variables named `x1`, `x2`, ... |
+| `literals(assignment, n=None, prefix="")` | `["1", "-2", ...]`, or `["x1", "-x2", ...]` with `prefix="x"` |
+| `bits(assignment, n=None)` | `"0101..."` |
+| `dimacs_values(assignment, n=None, width=20)` | SAT competition `v` lines, ending in `0` |
+| `xcsp3_instantiation(variables, cost=None)` | an XCSP3 `<instantiation>` element, as text |
+| `status_line(status, has_objective)` | `"s OPTIMUM FOUND"`, `"s SATISFIABLE"`, `"s UNSATISFIABLE"` or `"s UNKNOWN"` |
+| `header_size(path, open=open)` | the number of variables a CNF, WCNF or OPB header declares, or `None` |
+| `load_cnf(path, open=open)` | a CNF file as a `cpmpy.Model` with variables `x1`, `x2`, ... |
+| `read_competition_output(text)` | `(answer of the s line, last o value, v lines)` |
+| `read_xcsp3_instantiation(text)` | `({name: value}, cost)` from an `<instantiation>` |
+| `read_literals(text, prefix="x")`, `read_bits(text, prefix="x")` | `{name: bool}` from literals or 0s and 1s |
+| `number(x)` | an objective value as text, without `.0` for integral values |
+
+`n` is the number of variables to write, usually from `header_size`. Variables up to `n` without a
+value are written as false. To read compressed files, pass `open=cpbenchy.Loader().opener(path)`.
+
+## Implementation
+
+<PackageSource id="solution-formats" />

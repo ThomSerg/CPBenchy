@@ -1,0 +1,52 @@
+---
+title: "SqliteStore"
+description: "Also keeps results in a database, to collect many experiments in one place."
+sidebar:
+  hidden: true
+---
+
+<PackageHeader id="sqlite-store" />
+
+## What it does
+
+Results always go to `results.jsonl`. This also writes every result as a row of an SQLite database:
+handy to collect many experiments in one place, or to query them with SQL. A rerun replaces its row.
+
+## Use it
+
+<CodeGroup titles={["Python", "Command line"]}>
+
+```python
+import cpbenchy
+
+cpbenchy.run("instances/", solvers=["ortools"], time_limit=60, plugins=["examples/plugins/sqlite_store.py"])
+cpbenchy.run("instances/", solvers=["ortools"], time_limit=60, plugins=["examples/plugins/sqlite_store.py:SqliteStore('all.db')"])
+```
+
+```sh
+cpbenchy run instances/ -s ortools -t 60 -p examples/plugins/sqlite_store.py
+cpbenchy run instances/ -s ortools -t 60 -p "examples/plugins/sqlite_store.py:SqliteStore('all.db')"
+```
+
+</CodeGroup>
+
+Then query the database:
+
+```sh
+sqlite3 results.db "select solver, count(*) from runs where status = 'optimal' group by solver"
+```
+
+## Options
+
+| Argument | |
+|---|---|
+| `path` | the database file. Default `results.db` |
+
+## What it writes
+
+A table `runs`, keyed by run id, with the main fields as columns and the whole record as JSON in
+`record`.
+
+## Implementation
+
+<PackageSource id="sqlite-store" />

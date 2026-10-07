@@ -1,0 +1,70 @@
+---
+title: cpbenchy
+description: Benchmark CPMpy solvers under proper resource limits, with a flexible plugin system to adapt to any needs.
+sidebar:
+  order: 0
+  label: Introduction
+---
+
+cpbenchy runs [CPMpy](https://github.com/CPMpy/cpmpy) solvers on benchmark instances, measures them
+properly, and stores the results to analyse. Has proper resource management thanks to 
+[runexec](https://github.com/bench-exec/runexec). You can use it from the command line or from
+Python. [Plugins](/library/) can change any part of its workings, adapting to your benchmarking needs.
+
+Run from the [command line](/reference/cli):
+```sh
+cpbenchy run data/xcsp3/ -s ortools -s exact -t 60 -m 4096 -j 8
+```
+
+Or from a [Python script](/reference/python):
+```python
+import cpbenchy
+from cpmpy.tools.datasets import XCSP3Dataset
+
+dataset = XCSP3Dataset(download=True)
+results = cpbenchy.run(dataset, solvers=["ortools", "exact"],
+                       time_limit=60, memory_limit=4096, jobs=8)
+results.to_pandas()
+```
+
+<CardGrid>
+  <Card title="Measured properly">
+    Each run is its own process under BenchExec's `runexec`. cgroups enforce the memory limit and
+    measure CPU time and peak memory of the whole process tree. Each parallel run gets its own physical
+    cores and NUMA memory.
+  </Card>
+  <Card title="Results you can analyse">
+    Each run is one JSON record with the solver's answer, the time of each stage, the measurements and
+    the solution trajectory, appended as runs finish. You can load the records straight into pandas.
+  </Card>
+  <Card title="Resumable">
+    Run the same benchmark again and cpbenchy only runs what is missing. An interrupted session loses
+    only the runs that were still going.
+  </Card>
+  <Card title="Pluggable">
+    Plugins are built on pluggy, the plugin system of pytest. Everything built-in is a plugin too.
+    Plugins can hook into the orchestrating process and into the measured worker.
+  </Card>
+  <Card title="A library to start from">
+    Competition output, solution checking, scoring, storage: the [library](/library/) has
+    observers, rules and examples ready to use, each enabled with one line.
+  </Card>
+  <Card title="As in the competitions">
+    [Rules](/guides/rules/) give runs a competition's limits, signals and output, or your own setup, in
+    one shareable file. [`cpbenchy submission`](/guides/submissions/) builds your entry into a runnable package.
+  </Card>
+</CardGrid>
+
+## Where to go next
+
+- [Installation](/getting-started/installation/), then
+  [your first benchmark](/getting-started/first-benchmark/) from the command line, or
+  [from Python](/getting-started/python/).
+- [Experiments](/guides/experiments/) for different settings per solver, streaming results, and
+  callbacks.
+- The [library](/library/): what is ready to use, from competition output to checking
+  solutions.
+- [Rules](/guides/rules/) to run as in a competition, or to share your setup, and
+  [submissions](/guides/submissions/) to enter one.
+- [Runner backend](/guides/backend/) to measure runs for another experiment framework.
+- [Writing plugins](/plugins/overview/) to change how runs work.

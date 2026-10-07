@@ -1,0 +1,57 @@
+---
+title: "cpbenchy submission"
+description: "Builds what you send to a competition, ready to upload and tested before you do."
+sidebar:
+  hidden: true
+---
+
+<PackageHeader id="submission" />
+
+## What it does
+
+Builds a competition submission: a directory (and an archive) that the competition runs as your
+solver. From one small file, it makes a launcher per track that takes the competition's placeholders,
+pins the packages you tested with, adds an install script and a README with the command lines to
+register, and tests every track before you upload.
+
+## Use it
+
+```sh
+cpbenchy submission init --rules xcsp3-2025 --rules xcsp3-2025-fast -s ortools   # writes submission.toml
+cpbenchy submission build --test --archive zip
+cpbenchy submission build -s highs --test --archive zip                          # the same, for HiGHS
+```
+
+```toml title="submission.toml"
+name = "cpmpy-{solver}"
+description = "CPMpy, with {solver} as its backend"
+solver = "ortools"
+requirements = ["pycsp3"]
+include = ["doc/description.pdf"]
+
+[[tracks]]
+name = "COP"
+rules = "xcsp3-2025"
+test = ["instances/small.xml"]
+```
+
+## Options
+
+| `cpbenchy submission build` | |
+|---|---|
+| `FILE` | the submission file (default `submission.toml`) |
+| `-s SOLVER` | build it for this solver instead of the file's |
+| `-o DIR` | output directory (default: the submission's name) |
+| `--archive zip\|gztar\|tar` | also pack it |
+| `--wheels` | bundle the packages' wheels, to install offline |
+| `--force` | replace an earlier build (only a directory cpbenchy built) |
+| `--test`, `--test-time` | run each track on its `test` instances |
+
+## Notes
+
+[Competition submissions](/guides/submissions/) explains the file, the placeholders and what is built
+in full.
+
+## Implementation
+
+<PackageSource id="submission" />

@@ -1,0 +1,42 @@
+---
+title: "solutions"
+description: "Records how solutions improve over time, for every run, out of the box."
+sidebar:
+  hidden: true
+---
+
+<PackageHeader id="solution-trajectory" />
+
+## What it does
+
+Records every run's solutions over time: for optimization problems, each better objective value the
+solver finds, with when it found it. It is on by default, for every run, through CPMpy's solution
+callback. Runs that are killed keep what they recorded.
+
+## Use it
+
+Nothing to do. To turn it off (no solution callback, for solvers where it costs time):
+
+<CodeGroup titles={["Python", "Command line"]}>
+
+```python
+import cpbenchy
+
+cpbenchy.run("instances/", solvers=["ortools"], time_limit=60, args=["--no-solutions"])
+```
+
+```sh
+cpbenchy run instances/ -s ortools -t 60 --no-solutions
+```
+
+</CodeGroup>
+
+## What it records
+
+| | |
+|---|---|
+| `extra["solutions"]` | `[[seconds, objective], ...]` |
+
+## Implementation
+
+<PackageSource id="solution-trajectory" />

@@ -1,0 +1,95 @@
+# Publish cpbenchy to PyPI.
+#
+# - A published GitHub release (tag vX.Y.Z, matching `version` in pyproject.toml) goes to PyPI.
+# - "Run workflow" (on the Actions tab) publishes the chosen branch to TestPyPI, as X.Y.Z.devN with N
+#   this run's number, to try a release first.
+#
+# Both use trusted publishing: no API token is stored here. On pypi.org and test.pypi.org, add a
+# (pending) trusted publisher for this repository, with workflow `publish.yml` and environment `pypi`
+# or `testpypi`.
+
+name: Publish
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: astral-sh/setup-uv@v7
+
+      - name: Check that the tag matches the version
+        if: github.event_name == 'release'
+        run: |
+          version="$(uv version --short)"
+          if [ "${GITHUB_REF_NAME#v}" != "$version" ]; then
+            echo "::error::release tag $GITHUB_REF_NAME doesn't match version $version in pyproject.toml"
+            exit 1
+          fi
+
+      - name: Give the TestPyPI build a version of its own
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          base="$(uv version --short)"
+          uv version --frozen "${base%%.dev*}.dev${GITHUB_RUN_NUMBER}"
+
+      - name: Build
+        run: uv build
+
+      - name: Check that the wheel installs and runs
+        run: |
+          uv venv /tmp/check
+          uv pip install --python /tmp/check dist/*.whl
+          /tmp/check/bin/cpbenchy --help > /dev/null
+          /tmp/check/bin/cpbenchy rules
+          /tmp/check/bin/python -c "import cpbenchy, cpbenchy.runlimit, cpbenchy.worker; print(cpbenchy.__version__)"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  testpypi:
+    name: Publish to TestPyPI
+    if: github.event_name == 'workflow_dispatch'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/cpbenchy
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
+  pypi:
+    name: Publish to PyPI
+    if: github.event_name == 'release'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/cpbenchy
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1

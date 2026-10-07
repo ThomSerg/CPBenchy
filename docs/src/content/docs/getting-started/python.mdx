@@ -1,0 +1,50 @@
+---
+title: From Python
+description: Run a benchmark from a Python script and analyse the results with pandas.
+sidebar:
+  order: 3
+---
+
+<Steps>
+  <Step title="Run">
+    ```python
+    import cpbenchy
+
+    results = cpbenchy.run(
+        "data/opb/",                  # files, directories, glob patterns or a CPMpy dataset
+        solvers=["ortools", "exact"],
+        time_limit=60,
+        out="results/opb",
+    )
+    ```
+
+    It takes the same options as [the command line](/getting-started/first-benchmark/), and stores the
+    results in `out` as they come in. Running the script again only does the runs that are missing.
+  </Step>
+  <Step title="Analyse">
+    ```python
+    df = results.to_pandas()              # one row per run
+    df.groupby("solver").solved.sum()     # solved instances per solver
+    ```
+
+    Later, `cpbenchy.load("results/opb")` gives the stored results back.
+  </Step>
+</Steps>
+
+## Follow the runs
+
+Pass a function to see each result as its run finishes:
+
+```python
+cpbenchy.run("data/opb/", solvers=["ortools"], time_limit=60, on_result=print)
+```
+
+## Next steps
+
+- **[Results](/guides/results/)**: what each result holds, and more ways to analyse them.
+- **[Experiments](/guides/experiments/)**: different settings per solver, results in a loop, and
+  callbacks for each solution found.
+- **The [library](/library/)**: ready-made extras to pass with `plugins=`, such as checking every
+  solution.
+- **[Extending cpbenchy](/plugins/overview/)**: record your own measurements with an observer, or benchmark your own formats with a loader.
+- The [Python API reference](/reference/python/) lists every argument.

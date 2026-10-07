@@ -1,0 +1,57 @@
+---
+title: "SaveSolution"
+description: "Keeps every final solution, to look at later or to check again without running anything."
+sidebar:
+  hidden: true
+---
+
+<PackageHeader id="save-solution" />
+
+## What it does
+
+Writes the final solution of every run that has one to `logs/<run_id>.solution.json`:
+
+```json
+{"status": "optimal", "objective": -9, "solution": {"x1": true, "x2": true, "x3": false, "x4": true}}
+```
+
+Optionally, it also puts the solution in the result itself. Saved solutions can be checked later with
+[`cpbenchy check`](/library/solution-checker/), without running anything again.
+
+## Use it
+
+<CodeGroup titles={["Python", "Command line"]}>
+
+```python
+import cpbenchy
+from cpbenchy import observers
+
+cpbenchy.run("instances/", solvers=["ortools"], time_limit=60, plugins=[observers.SaveSolution()])
+cpbenchy.run("instances/", solvers=["ortools"], time_limit=60, plugins=[observers.SaveSolution(record=True)])
+```
+
+```sh
+cpbenchy run instances/ -s ortools -t 60 -p cpbenchy.observers:SaveSolution
+cpbenchy run instances/ -s ortools -t 60 -p "cpbenchy.observers:SaveSolution(record=True)"
+```
+
+</CodeGroup>
+
+## Options
+
+| Argument | |
+|---|---|
+| `record` | also store the solution in the result, as `extra["solution"]`. Handy for small models, but it makes `results.jsonl` large. Default `False` |
+
+## What it records
+
+| | |
+|---|---|
+| `logs/<run_id>.solution.json` | status, objective, and `{name: value}` of the instance's variables |
+| `extra["solution"]` | with `record=True`: the same `{name: value}` |
+
+In the parent, the file is `run.artifact("solution.json")`.
+
+## Implementation
+
+<PackageSource id="save-solution" />

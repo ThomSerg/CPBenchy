@@ -1,0 +1,81 @@
+---
+title: Results
+description: What a result record holds, what the statuses mean, and how to analyse results.
+sidebar:
+  order: 2
+---
+
+Each run gives one flat record, appended to `results.jsonl` in the output directory as the run
+finishes. Appending one line per run means the results are readable while a session is running, safe if
+it crashes, and resumable.
+
+```
+results/x/
+  results.jsonl              one record per run
+  run.json                   provenance of the latest session: options, versions, host, executor, plugins
+  logs/<run_id>.log          the worker's output
+  logs/<run_id>.events.jsonl what the worker reported while it ran
+  logs/<run_id>.job.json     what the worker was asked to do
+```
+
+## Loading
+
+```python
+import cpbenchy
+
+results = cpbenchy.load("results/x")    # a list of RunResult
+df = results.to_pandas()                # one row per run; extra fields become extra.<name> columns
+
+results.where(solver="ortools", status="optimal")
+[r for r in results if r.solved and r.walltime_s < 10]
+```
+
+On the command line: `cpbenchy show results/x` (`--by`, `--par`, `--runs`, `--csv`).
+
+## Status
+
+| Status | Meaning |
+|---|---|
+| `optimal` | the solver proved its solution optimal |
+| `feasible` | a solution was found; for satisfaction problems, that solves it. Also a run stopped at its limit with `--terminate`, with the best solution it had |
+| `unsat` | the solver proved there is no solution |
+| `unknown` | the solver stopped without an answer, usually at its time limit |
+| `timeout` | the process was killed: it overran a time limit (wall or CPU) plus the grace period. Or it was stopped at its limit with `--terminate` without a solution |
+| `memout` | the process was killed at the memory limit |
+| `error` | something failed; see `error` and the run's log |
+
+`solved` is true for `optimal` and `unsat`, and for `feasible` when the problem has no objective.
+
+## Scores
+
+To rank solvers as competitions do, use their [PAR-k score](/library/par/): the time of each solved
+run, plus k times the time limit for each other run. `--par 2` adds it to the summary of `cpbenchy run`
+and `cpbenchy show`. From Python:
+
+```python
+from cpbenchy.scoring import par, par_totals
+
+par_totals(results, factor=2)                   # {("ortools",): 412.3, ("exact",): 538.9}
+df["par2"] = [par(r) for r in results]          # a column per run
+```
+
+## Fields
+
+See the [result record reference](/reference/result-record/) for every field. The main ones are:
+
+- **What ran:** `instance`, `dataset`, `solver`, `params`, `seed`, `cores`, `time_limit_s`,
+  `cputime_limit_s`, `mem_limit_mib`, and `rules`: the [rules](/guides/rules/) the run followed, if
+  any.
+- **The answer:** `status`, `objective`, `has_objective`.
+- **Time per stage, measured in the worker:**
+  - `parse_s`: loading the instance into a CPMpy model
+  - `transform_s`: creating the solver, which is when CPMpy transforms and posts the model
+  - `solve_s`: the `solve()` call
+- **Measured by the executor:** `walltime_s`, `cputime_s`, `memory_mib`, and `termination` (why it was
+  killed, if it was), plus `reliable`, which is false without cgroups.
+- **`extra`:** whatever plugins add. The built-in `solutions` plugin records the trajectory as
+  `extra["solutions"]`, a list of `[seconds, objective]`. [`CheckSolutions`](/library/check-solutions/)
+  adds `extra["check"]`, and the [library](/library/) has more.
+
+To check stored solutions against their models after the fact, run `cpbenchy check`. See
+[cpbenchy check](/library/solution-checker/).

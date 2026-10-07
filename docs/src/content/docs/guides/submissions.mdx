@@ -1,0 +1,152 @@
+---
+title: Competition submissions
+description: Build a self-contained competition submission from rules and a solver, test it, and pack it.
+sidebar:
+  order: 7
+  badge:
+    text: WIP
+    variant: caution
+---
+
+<Aside type="caution" title="Under construction">
+  Competition submissions are still being built: the commands and the submission file may change.
+  Test yours with `--test` before you send it in.
+</Aside>
+
+A competition runs your solver itself. Its own tool (such as runsolver) starts the solver on each
+instance with a command line you register, limits and measures it, and reads its standard output.
+`cpbenchy submission` builds what you send in, from one small file:
+
+```sh
+cpbenchy submission init --rules xcsp3-2025 --rules xcsp3-2025-fast -s ortools
+# edit submission.toml: tracks, test instances, the solver description
+cpbenchy submission build --test --archive zip
+```
+
+```
+built cpmpy-ortools
+  COP                  DIR/bin/run_COP BENCHNAME RANDOMSEED TIMELIMIT MEMLIMIT NBCORE TMPDIR
+  FAST-COP             DIR/bin/run_FAST-COP BENCHNAME RANDOMSEED TIMELIMIT MEMLIMIT NBCORE TMPDIR
+  ok   COP instances/small.xml
+  ok   FAST-COP instances/small.xml
+archive cpmpy-ortools.zip
+```
+
+Register those command lines with the competition, upload the archive, and that's it.
+
+## The submission file
+
+```toml
+name = "cpmpy-{solver}"                 # {solver} is filled in, so one file serves several solvers
+description = "CPMpy, with {solver} as its backend"
+authors = ["..."]
+solver = "ortools"
+params = {}                             # solver parameters, as -P
+plugins = []                            # extra plugins: module references, or .py files (bundled)
+loader = "myloaders.py:MyLoader"        # optional, as --loader (bundled)
+requirements = ["pycsp3"]               # extra packages, e.g. pycsp3 to read XCSP3
+include = ["doc/description.pdf"]       # files or directories to copy in
+
+[[tracks]]
+name = "COP"
+rules = "xcsp3-2025"                    # built-in rules or a .toml file
+test = ["instances/small.xml"]          # instances for `build --test`
+
+[[tracks]]
+name = "FAST-COP"
+rules = "xcsp3-2025-fast"
+test = ["instances/small.xml"]
+```
+
+Each track follows [rules](/guides/rules/): limits, how the run is stopped, which output it prints. The
+rules' `[interface]` says how the competition calls a solver: which placeholders the launcher takes, in
+which order. A track can override `solver`, `params` and `arguments`.
+
+`cpbenchy submission build -s highs` builds the same file for another solver, as `cpmpy-highs`.
+
+## What it builds
+
+```
+cpmpy-ortools/
+  bin/run_COP         a launcher per track
+  install.sh          run once where it will run: a .venv with requirements.txt
+  requirements.txt    the packages, pinned to the versions it was built and tested with
+  code/               cpbenchy itself, CPMpy if installed from a local source, and bundled .py files
+  rules/              the rules of each track
+  README.md           what to register: each track's command line
+  build.json          how it was built: versions, the submission file, the rules
+  doc/...             what you included
+```
+
+Each launcher passes the placeholders on to `python -m cpbenchy solve` and execs it, so the
+competition's signals reach the solver process directly. It also sets `OPENBLAS_NUM_THREADS=1`:
+otherwise numpy starts a thread per CPU when CPMpy is imported, which costs CPU time that competitions
+count.
+
+| Placeholder | Passed as |
+|---|---|
+| `BENCHNAME` | the instance |
+| `RANDOMSEED` | `--seed` (solvers get it modulo 2³¹) |
+| `TIMELIMIT`, `TIMEOUT` | `--cpu-time-limit` if the rules limit CPU time, else `--time-limit` |
+| `WALLTIMELIMIT` | `--time-limit` |
+| `MEMLIMIT` | `--mem-limit` |
+| `NBCORE`, `NBCORES` | `--cores` |
+| `TMPDIR` | the `TMPDIR` environment variable |
+
+A competition with other placeholders, or a fixed calling convention, is described in the rules'
+`[interface]`. Map a placeholder yourself as `"NAME=--option"`, or ignore one as `"NAME="`. For example,
+for a MaxSAT Evaluation anytime track, called as `run <instance> <seconds>`:
+
+```toml
+[interface]
+arguments = ["BENCHNAME", "TIMELIMIT=--time-limit"]
+```
+
+## Packages
+
+`requirements.txt` pins everything the submission needs, dependencies included, to the versions
+installed where you build it. That covers what `cpbenchy solve` needs, CPMpy, the solvers' packages,
+and your `requirements`. Build it in the environment you tested with. `cpbenchy` itself is in `code/`,
+so it needs no install, and neither does BenchExec: the competition measures the runs.
+
+`install.sh` creates `.venv` with `python3 -m venv` (or `virtualenv`), or with the Python in `PYTHON`,
+and installs `requirements.txt`. For machines without internet, `build --wheels` downloads the wheels
+into `wheels/`, and `install.sh` then installs from there. Build on the same platform and Python
+version as the competition's machines, as wheels are specific to both.
+
+## Testing
+
+`build --test` runs each track's launcher on its `test` instances, as the competition would: with its
+placeholders, from another directory, using this Python and the submission's own `code/`. It checks
+that each run prints one `s` line. `--test-time` sets the time limit (default 20 seconds).
+
+To test the installed submission itself, run a launcher by hand:
+
+```sh
+./install.sh
+bin/run_COP instances/small.xml 1 60 4096 1 /tmp
+```
+
+## `cpbenchy solve`
+
+The launchers run `cpbenchy solve`, which solves one instance in its own process, as a competition
+solver does. It takes the options of `cpbenchy run`, for one instance, solver and seed:
+
+```sh
+cpbenchy solve instance.xml -s ortools --rules xcsp3-2025 --cpu-time-limit 60
+```
+
+```
+c [cpbenchy     0.81s] loading instance.xml
+o 12
+o 9
+s OPTIMUM FOUND
+v <instantiation type="optimum" cost="9">
+...
+c cpbenchy: optimal, objective 9; parse 0.07s, transform 0.00s, solve 0.38s
+```
+
+- Competition output goes to stdout. Progress and a summary come as comment lines (`c ...`).
+- It always stops at its limits, as with `--terminate`. At its time limit (wall or CPU), or on
+  SIGTERM, it prints the best solution it found.
+- Time counts from when the process started, as the competition counts it.

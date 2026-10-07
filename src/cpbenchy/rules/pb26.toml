@@ -1,0 +1,19 @@
+name = "pb26"
+description = "Pseudo-Boolean Competition 2026, sequential tracks (DEC-LIN, OPT-LIN, ...), without proof logging"
+url = "https://www.cril.univ-artois.fr/PB26/"
+
+# 1 h CPU time and 31 GB per job (PB26 page). SIGTERM, then SIGKILL one second later, as in the
+# requirements of earlier editions (https://www.cril.univ-artois.fr/PB24/competitionRequirements.pdf).
+[settings]
+cpu-time-limit = 3600       # 1 hour of CPU time
+time-limit = 3600           # the rules give no wall clock limit, and cpbenchy needs one
+mem-limit = 31744           # 31 GB, read as GiB
+cores = 1
+terminate = true
+grace = 1
+plugins = ["cpbenchy.observers:PBOutput"]
+
+# How the competition calls a solver: a command line of your choice, with these placeholders
+# (`cpbenchy submission` builds a launcher that takes them, in this order). TIMELIMIT is CPU time.
+[interface]
+arguments = ["BENCHNAME", "RANDOMSEED", "TIMELIMIT", "MEMLIMIT", "NBCORE", "TMPDIR"]

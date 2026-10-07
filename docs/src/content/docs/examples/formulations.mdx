@@ -1,0 +1,34 @@
+---
+title: "formulations.py"
+description: "Compares different ways of modelling the same problem, without any instance files."
+sidebar:
+  hidden: true
+---
+
+<PackageHeader id="formulations" />
+
+## What it does
+
+Compares formulations of your own model on generated instances: no instance files at all. The instances
+are sizes, and a loader with an argument builds the model inside the run: N-Queens with AllDifferent
+constraints, or with a `!=` between every pair of queens. Each formulation is a separate entry of one
+experiment, so the results stay apart.
+
+## Use it
+
+```sh
+python examples/scripts/formulations.py --sizes 8 32 64 --solvers ortools exact --time-limit 30
+```
+
+## Options
+
+| Argument | |
+|---|---|
+| `--sizes` | the board sizes |
+| `--solvers` | the solvers to compare |
+| `--time-limit` | seconds per run |
+| `--out` | output directory |
+
+## Implementation
+
+<PackageSource id="formulations" />

@@ -1,0 +1,172 @@
+---
+title: Plugins with hooks
+description: When an observer isn't enough - add options, choose which runs happen, replace a step, or run workers elsewhere - write functions for cpbenchy's hooks.
+sidebar:
+  order: 4
+---
+
+<Aside type="caution" title="Under construction">
+  Writing plugins is still being worked on: the hooks, the `Observer` and `Loader` classes and these
+  pages may change. To use the plugins and observers that come with cpbenchy, see the
+  [library](/library/).
+</Aside>
+
+Observers and loaders cover what happens in a run. Hooks reach every step of cpbenchy, before, during
+and after the runs. Use them when you want to:
+
+- add a command-line option of your own
+- choose, reorder or add runs
+- replace how instances are found, loaded or solved
+- run the workers somewhere else, such as in containers
+
+cpbenchy is built on [pluggy](https://pluggy.readthedocs.io), the plugin system of pytest. Everything
+cpbenchy does by default is a plugin too: collecting instances, choosing the executor, the terminal
+output, solver settings, recording solutions. So a plugin can change any of it.
+
+## A first plugin
+
+A plugin is a module with functions named after *hooks*, marked with `@cpbenchy.hookimpl`. cpbenchy
+calls each hook at a fixed point. This plugin adds an option, `--slowest N`, and lists the N slowest
+solved runs at the end:
+
+```python title="slowest.py"
+import cpbenchy
+
+@cpbenchy.hookimpl
+def cpbenchy_addoption(parser):
+    parser.getgroup("slowest").addoption("--slowest", type=int, default=5, help="how many slow runs to list")
+
+@cpbenchy.hookimpl
+def cpbenchy_configure(config):
+    config.pluginmanager.register(Slowest(config.getoption("slowest")), "slowest")
+
+class Slowest:
+    def __init__(self, n):
+        self.n = n
+        self.solved = []
+
+    @cpbenchy.hookimpl
+    def cpbenchy_run_finished(self, run, result):
+        if result.solved:
+            self.solved.append(result)
+
+    @cpbenchy.hookimpl
+    def cpbenchy_sessionfinish(self, session):
+        for result in sorted(self.solved, key=lambda r: r.walltime_s, reverse=True)[: self.n]:
+            print(f"{result.walltime_s:7.1f}s  {result.solver}  {result.instance}")
+```
+
+```sh
+cpbenchy run instances/ -s ortools -t 60 -p slowest.py --slowest 10
+```
+
+Three things happen here:
+
+1. **`cpbenchy_addoption`** adds the option. It takes argparse's arguments. The option also works in
+   `cpbenchy.toml` (`slowest = 10`), in rules, and from Python as `args=["--slowest", "10"]`.
+2. **`cpbenchy_configure`** runs once the options are read. It creates an object with the option's
+   value and registers it, so that the object's own hooks are called too.
+3. **The object keeps state across runs**, in `self.solved`. The parent calls hooks on its main thread,
+   one at a time, so no locking is needed.
+
+Everything an observer does, a plugin can do with hooks. An observer's `on_result` is the hook
+`cpbenchy_run_finished`, its `on_finish` is `cpbenchy_worker_finish`, and so on. The
+[hook reference](/plugins/hooks/) lists them all.
+
+## The two sides
+
+Each hook's name says where it runs. **`cpbenchy_worker_*` hooks** run in the measured worker, with
+the run as `ctx`. **The others** run in the parent:
+
+```
+parent (cpbenchy run / cpbenchy.run)            worker (python -m cpbenchy.worker, one per run)
+  cpbenchy_addoption, cpbenchy_configure
+  cpbenchy_collect, cpbenchy_modify_runs
+  cpbenchy_make_executor, cpbenchy_sessionstart
+  per run:
+    cpbenchy_run_start     ── starts ──────────►  cpbenchy_worker_start
+                                                  cpbenchy_worker_load         (parse_s)
+                                                  cpbenchy_worker_solver       (transform_s)
+                                                  cpbenchy_worker_solver_args
+                                                  cpbenchy_worker_solve        (solve_s)
+    cpbenchy_run_event     ◄── events ──────────    cpbenchy_worker_solution   (each solution)
+                                                  cpbenchy_worker_finish       (always)
+    cpbenchy_run_finished  ◄── result event ────
+  cpbenchy_sessionfinish
+```
+
+One file can implement hooks of both sides. The worker passes data to the parent with
+`ctx.record(key, value)`, which ends up in `result.extra`, and with `ctx.emit(kind, **data)`, which
+arrives as `cpbenchy_run_event` while the run goes on.
+
+### How a plugin gets into the worker
+
+The worker is another process, possibly with another Python, such as the environment of an older
+solver. So cpbenchy doesn't send plugin objects to it. For each plugin that implements a worker hook,
+the worker imports it again, by module name or from its file. That has three consequences:
+
+- **Settings come from `ctx.options`.** A plugin object registered in `cpbenchy_configure` exists only
+  in the parent. Worker hooks read the session's options, your own included, from `ctx.options`:
+
+  ```python
+  @cpbenchy.hookimpl
+  def cpbenchy_worker_solver_args(ctx):
+      return {"linearization_level": ctx.options["linearization"]}
+  ```
+
+- **Module-level code runs again** in each worker. Keep imports there light, or import inside the hook.
+  An experiment started at the top level of the file would run again too. Start it under
+  `if __name__ == "__main__":`.
+- **Classes are created again without arguments.** For a class with arguments, use an
+  [observer](/plugins/observers/): it is created again with the same arguments.
+
+## Replacing a step
+
+Some hooks are **first result**: cpbenchy calls the implementations one by one, and stops at the first
+that returns something other than `None`. The built-in implementations come last. So returning a value
+replaces what cpbenchy does by default, and returning `None` leaves it to cpbenchy:
+
+```python
+@cpbenchy.hookimpl
+def cpbenchy_worker_load(ctx):
+    if ctx.spec.instance.path.endswith(".dzn"):
+        return my_minizinc_reader(ctx.spec.instance.path)   # a cpmpy.Model
+    # None: other instances are loaded as usual
+```
+
+The first-result hooks are `cpbenchy_collect`, `cpbenchy_make_executor`, `cpbenchy_worker_load`,
+`cpbenchy_worker_solver` and `cpbenchy_worker_solve`.
+
+## Order, and wrapping a step
+
+pluggy's options on `hookimpl` control the order: `tryfirst=True` and `trylast=True`. A wrapper runs
+around the other implementations, including the built-in one:
+
+```python
+@cpbenchy.hookimpl(wrapper=True)
+def cpbenchy_worker_solve(ctx):
+    ctx.log("about to solve")    # a line in the run's log file
+    result = yield               # the other implementations: the solving itself
+    ctx.record("solver_runtime_s", ctx.solver.status().runtime)
+    return result
+```
+
+## Where plugins come from
+
+cpbenchy loads plugins from these places, in this order:
+
+1. **Built in.** `cpbenchy plugins` lists them, with the hooks each implements.
+2. **Installed packages** with an entry point in the `cpbenchy` group. The environment variable
+   `CPBENCHY_DISABLE_PLUGIN_AUTOLOAD` turns this off.
+3. **`cpbenchy_conf.py`** in the current directory.
+4. **Asked for**:
+   - `-p module`, `-p module:Class` or `-p path/to/file.py` on the command line
+   - `plugins = [...]` in `cpbenchy.toml` or in rules
+   - `plugins=[...]` in Python, as references or objects
+
+`-p no:NAME` turns a plugin off, built-in ones included. For example, `-p no:terminal` gives no
+output, `-p no:solvers` drops cpbenchy's solver settings, and `-p no:cpbenchy_conf.py` skips the local
+plugin file.
+
+Next: the [hook reference](/plugins/hooks/), [recipes](/plugins/recipes/), and
+[testing and sharing](/plugins/testing/).

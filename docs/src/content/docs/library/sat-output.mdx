@@ -1,0 +1,63 @@
+---
+title: "SATOutput"
+description: "Answers in the format of the SAT competition."
+sidebar:
+  hidden: true
+---
+
+<PackageHeader id="sat-output" />
+
+## What it does
+
+Writes what a solver in the SAT competition prints, for each run on a DIMACS CNF instance. The
+solution is DIMACS literals, 20 per line, ending in `0`:
+
+```
+s SATISFIABLE
+v -1 2 3 -4 0
+```
+
+Each competition specifies what a solver prints:
+- `o` lines with each better objective value, while it solves
+- an `s` line with its answer: `OPTIMUM FOUND`, `SATISFIABLE`, `UNSATISFIABLE` or `UNKNOWN`
+- `v` lines with the solution
+
+The output goes to each run's `logs/<run_id>.sat.out`, written inside the measured run, as a
+competition solver would print it, so it costs the run the time it would cost in the competition. A run
+that is killed keeps its `o` lines. Under [`cpbenchy solve`](/library/solve/), the output goes to stdout,
+where competitions read it.
+
+
+## Use it
+
+<CodeGroup titles={["Python", "Command line"]}>
+
+```python
+import cpbenchy
+from cpbenchy import observers
+
+cpbenchy.run("sat/*.cnf.xz", solvers=["ortools", "exact"], time_limit=60, plugins=[observers.SATOutput()])
+```
+
+```sh
+cpbenchy run sat/*.cnf.xz -s ortools -s exact -t 60 -p cpbenchy.observers:SATOutput
+```
+
+</CodeGroup>
+
+## What it records
+
+| | |
+|---|---|
+| `logs/<run_id>.sat.out` | the competition output |
+
+## Notes
+
+CPMpy's CNF loader gives variables generated names, which lose their DIMACS numbers. So, unless the
+run has its own loader, `SATOutput` loads CNF instances itself, with
+[`formats.load_cnf`](/library/solution-formats/), which names them `x1`, `x2`, ... Loading is still
+measured as `parse_s`.
+
+## Implementation
+
+<PackageSource id="sat-output" />

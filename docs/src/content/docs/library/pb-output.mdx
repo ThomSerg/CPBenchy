@@ -1,0 +1,62 @@
+---
+title: "PBOutput"
+description: "Answers in the format of the Pseudo-Boolean competition."
+sidebar:
+  hidden: true
+---
+
+<PackageHeader id="pb-output" />
+
+## What it does
+
+Writes what a solver in the [Pseudo-Boolean competition](https://www.cril.univ-artois.fr/PB26/) prints,
+for each run on an OPB instance. The solution is a line with every variable as a literal:
+
+```
+o -7
+o -9
+s OPTIMUM FOUND
+v x1 x2 -x3 x4
+```
+
+Each competition specifies what a solver prints:
+- `o` lines with each better objective value, while it solves
+- an `s` line with its answer: `OPTIMUM FOUND`, `SATISFIABLE`, `UNSATISFIABLE` or `UNKNOWN`
+- `v` lines with the solution
+
+The output goes to each run's `logs/<run_id>.pb.out`, written inside the measured run, as a
+competition solver would print it, so it costs the run the time it would cost in the competition. A run
+that is killed keeps its `o` lines. Under [`cpbenchy solve`](/library/solve/), the output goes to stdout,
+where competitions read it.
+
+Variables that occur in no constraint still get a value, from the number of variables in the
+instance's header (`* #variable= ...`).
+
+## Use it
+
+<CodeGroup titles={["Python", "Command line"]}>
+
+```python
+import cpbenchy
+from cpbenchy import observers
+
+cpbenchy.run("pb/", solvers=["exact", "ortools"], time_limit=60, plugins=[observers.PBOutput()])
+```
+
+```sh
+cpbenchy run pb/ -s exact -s ortools -t 60 -p cpbenchy.observers:PBOutput
+```
+
+</CodeGroup>
+
+The [PB rules](/library/pb26/) enable it, with the competition's limits.
+
+## What it records
+
+| | |
+|---|---|
+| `logs/<run_id>.pb.out` | the competition output |
+
+## Implementation
+
+<PackageSource id="pb-output" />

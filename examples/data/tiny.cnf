@@ -1,0 +1,6 @@
+c a tiny satisfiable CNF: x1 is false and x2 true in every solution; x3 is free, x4 occurs in no clause
+p cnf 4 4
+-1 0
+2 -1 0
+2 3 0
+-3 2 0

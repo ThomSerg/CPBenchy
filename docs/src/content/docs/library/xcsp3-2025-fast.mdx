@@ -1,0 +1,49 @@
+---
+title: "xcsp3-2025-fast"
+description: "The XCSP3 Competition 2025's short track: a few minutes per instance."
+sidebar:
+  hidden: true
+---
+
+<PackageHeader id="xcsp3-2025-fast" />
+
+## What it does
+
+Runs your experiment the way the XCSP3 Competition 2025 runs the Fast COP track: its limits, how runs are stopped, and
+its output. Results record that they followed these rules, or that you changed them.
+
+| Wall time | CPU time | Memory | Cores | At the limit | Output |
+|---|---|---|---|---|---|
+| 4.5 min | 3 min | 64 GiB | 1 | SIGTERM, SIGKILL 1 s later | [`XCSP3Output`](/library/xcsp3-output/) |
+
+## Use it
+
+<CodeGroup titles={["Python", "Command line"]}>
+
+```python
+import cpbenchy
+
+cpbenchy.run("instances/", solvers=["ortools", "exact"], rules="xcsp3-2025-fast")
+cpbenchy.run("instances/", solvers=["ortools"], rules="xcsp3-2025-fast", mem_limit_mib=8192, args=["--scale", "0.05"])  # a quick try
+```
+
+```sh
+cpbenchy run instances/ -s ortools -s exact --rules xcsp3-2025-fast
+cpbenchy run instances/ -s ortools --rules xcsp3-2025-fast --scale 0.05 -m 8192   # a quick try: a twentieth of the time, 8 GiB
+```
+
+</CodeGroup>
+
+The memory limit is the competition's. On a machine with less memory, give a lower one with `-m`: the runs then record the rules as modified.
+
+To enter the competition, build a submission with these rules: [`cpbenchy submission`](/library/submission/).
+
+## Notes
+
+The numbers come from the competition's own documents, cited in the file. Competitions change their
+rules from year to year: check the file against the competition's call before you rely on it, and add
+the next edition as a new file. [Rules](/guides/rules/) explains the format.
+
+## Implementation
+
+<PackageSource id="xcsp3-2025-fast" />

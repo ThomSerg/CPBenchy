@@ -1,0 +1,169 @@
+---
+title: Command line
+description: Every cpbenchy command and option.
+sidebar:
+  order: 1
+---
+
+```
+cpbenchy COMMAND [options]
+```
+
+| Command | |
+|---|---|
+| `run` | run solvers on instances |
+| `show` | show stored results |
+| `plugins` | list active plugins, in the parent and the worker, with the hooks they implement |
+| `doctor` | check what this machine supports: runexec limits, CPUs, memory, installed solvers |
+
+## cpbenchy run
+
+```
+cpbenchy run [SOURCE ...] [options]
+```
+
+`cpbenchy run --help` shows these options plus those added by plugins.
+
+```sh
+cpbenchy run data/ -s ortools -t 60 -k "*rcpsp*"              # only matching instance names
+cpbenchy run data/ -s ortools -t 60 --limit 20                # only the first 20 instances
+cpbenchy run data/ -s ortools -t 60 --seed 1 --seed 2         # each run once per seed
+cpbenchy run data/ -s ortools -t 60 -P num_search_workers=8 --cores 8
+```
+
+**Defaults in a file.** Put the options you always use in `cpbenchy.toml`, or in `[tool.cpbenchy]` in
+`pyproject.toml`, keyed by the long option name (`time-limit`) or the destination (`time_limit`):
+
+```toml
+sources = ["data/opb"]
+solvers = ["ortools", "exact"]
+time-limit = 60
+mem-limit = 4096
+jobs = 8
+```
+
+Then `cpbenchy run` is enough. A `plugins` key holds a list of `-p` values, and a `rules` key names
+[rules](/guides/rules/) to follow. Rules take precedence over `cpbenchy.toml`, and options given on the
+command line over both.
+
+**What to run**
+
+| Option | |
+|---|---|
+| `SOURCE ...` | instance files, directories (searched recursively) or glob patterns. Any format CPMpy reads (XCSP3, OPB, WCNF, DIMACS, MPS, LP, FlatZinc, ...), from the extension; compressed files (`.xz`, `.lzma`, `.gz`, `.bz2`) work |
+| `-s, --solver SOLVER` | a solver name as CPMpy knows it, e.g. `ortools`, `exact`, `gurobi`, `minizinc:chuffed`; repeatable |
+| `-t, --time-limit SECONDS` | time limit per run (wall clock) |
+| `--cpu-time-limit SECONDS` | CPU time limit per run (default: none) |
+| `-m, --mem-limit MIB` | memory limit per run |
+| `--scale FACTOR` | multiply the time limits by this, e.g. `0.1` to try rules quickly |
+| `--rules RULES` | follow these [rules](/guides/rules/): a built-in name or a `.toml` file |
+| `-P, --param KEY=VALUE` | solver parameter; VALUE is read as JSON if it parses; repeatable |
+| `--seed N` | one run per seed; repeatable |
+| `--cores N` | cores per run (default 1) |
+| `--no-solutions` | don't install a solution callback or record the solution trajectory |
+
+**Execution**
+
+| Option | |
+|---|---|
+| `-j, --jobs N` | runs in parallel (default 1) |
+| `-o, --out DIR` | output directory (default `cpbenchy-results`) |
+| `--rerun` | also run what is already in the output directory |
+| `--executor NAME` | `auto` (default), `runlimit`, `subprocess` or `inline`; see [Measurement and limits](/guides/limits/) |
+| `--grace SECONDS` | how long after a time limit a run is killed (default 10) |
+| `--terminate` | stop each run at its time limit, as competitions do: it reports its best solution; see [Measurement and limits](/guides/limits/#stopping-runs-at-their-limit) |
+| `--hyperthreading` | let runs use hyperthread siblings |
+| `--container` | runlimit only: no network, read-only file system except the output directory |
+
+**Selection**
+
+| Option | |
+|---|---|
+| `-k PATTERN` | only instances whose name matches; a glob, or a substring |
+| `--limit N` | only the first N instances |
+| `--format FORMAT` | CPMpy load format of the files (default: from the file name) |
+
+**Plugins and output**
+
+| Option | |
+|---|---|
+| `-p PLUGIN` | load a plugin: `module`, `module:Class` or `file.py`; `-p no:NAME` disables plugin NAME |
+| `-v, --verbose` | print every finished run |
+| `-q, --quiet` | only print the summary |
+| `--par K` | add each solver's [PAR-K score](/library/par/) to the summary |
+
+The exit code is 0 when all runs ended without an `error` status, 1 otherwise, 2 for usage errors, and
+130 when interrupted.
+
+## cpbenchy show
+
+```
+cpbenchy show [OUT] [--by FIELDS] [--par K] [--runs] [--csv]
+```
+
+| Option | |
+|---|---|
+| `OUT` | output directory (default `cpbenchy-results`) |
+| `--by FIELDS` | comma-separated fields to group the summary by (default `solver`); `extra.<name>` works |
+| `--par K` | add the [PAR-K score](/library/par/) per group to the summary |
+| `--runs` | also list every run |
+| `--csv` | print all results as CSV instead |
+
+## cpbenchy check
+
+```
+cpbenchy check [OUT] [--loader REF] [--write] [-v]
+```
+
+Checks the solutions of finished runs against their models again. See
+[cpbenchy check](/library/solution-checker/). The exit code is 1 if any solution is invalid.
+
+| Option | |
+|---|---|
+| `OUT` | output directory (default `cpbenchy-results`) |
+| `--loader REF` | load the models with this loader instead of the runs' own |
+| `--write` | store each verdict in `results.jsonl`, as `extra["check"]` |
+| `-v`, `--verbose` | list every run and every violation, not only the invalid runs |
+
+## cpbenchy solve
+
+```
+cpbenchy solve INSTANCE -s SOLVER [options]
+```
+
+Solves one instance in this process, as a competition runs a solver: competition output on stdout,
+stopped at its limits (or on SIGTERM) with the best solution found. It takes the options of `cpbenchy
+run`. See [Competition submissions](/guides/submissions/#cpbenchy-solve).
+
+## cpbenchy submission
+
+```
+cpbenchy submission init [FILE] [--rules RULES ...] [-s SOLVER]
+cpbenchy submission build [FILE] [-s SOLVER] [-o DIR] [--archive zip|gztar|tar] [--wheels] [--force] [--test] [--test-time SECONDS]
+```
+
+`init` writes a submission file (default `submission.toml`) with a track per rules. `build` builds the
+submission, in `DIR` (default: its name). See [Competition submissions](/guides/submissions/).
+
+| Option | |
+|---|---|
+| `-s SOLVER` | build for this solver instead of the file's |
+| `--archive FORMAT` | also pack it, next to the directory |
+| `--wheels` | bundle the packages' wheels, to install offline |
+| `--force` | replace an earlier build (only a directory cpbenchy built) |
+| `--test` | run each track on its `test` instances; exit code 1 if one fails |
+
+## cpbenchy rules
+
+```
+cpbenchy rules [NAME]
+```
+
+Lists the built-in [rules](/guides/rules/), or prints one (a built-in name or a `.toml` file), to
+read or to copy as a start for your own.
+
+## Environment variables
+
+| Variable | |
+|---|---|
+| `CPBENCHY_DISABLE_PLUGIN_AUTOLOAD` | don't load plugins from installed packages' entry points |

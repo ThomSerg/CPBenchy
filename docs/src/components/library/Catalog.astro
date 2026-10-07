@@ -1,0 +1,129 @@
+---
+/**
+ * A catalog: every component of the library, or every example, as a card with a short summary, by
+ * category, with a search box and filters by kind. Each card links to the component's page.
+ *
+ *   <Catalog />
+ *   <Catalog of="examples" />
+ */
+import Icon from "@cloudflare/nimbus-docs/components/Icon.astro";
+import { Badge } from "@/components/ui/badge";
+import { CATEGORIES, EXAMPLES, EXAMPLE_CATEGORIES, KINDS, LIBRARY, pageUrl } from "@/data/library";
+
+interface Props {
+  of?: "library" | "examples";
+}
+
+const examples = Astro.props.of === "examples";
+const entries = examples ? EXAMPLES : LIBRARY;
+const categories = examples ? EXAMPLE_CATEGORIES : CATEGORIES;
+const filters = examples
+  ? []
+  : [
+      { id: "all", label: `All (${LIBRARY.length})` },
+      { id: "observer", label: "Observers" },
+      { id: "plugin", label: "Plugins" },
+      { id: "rules", label: "Rules" },
+      { id: "command", label: "Commands" },
+    ];
+const placeholder = examples
+  ? "Search the examples: score, sql, loader, tuning, ..."
+  : "Search the library: xcsp3, check, parallel, ...";
+const singular: Record<string, string> = { plugins: "Plugin", loaders: "Loader", scripts: "Script" };
+---
+
+<div class="not-prose my-6" data-catalog>
+  <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+    <input
+      type="search"
+      placeholder={placeholder}
+      class="w-full rounded-md bg-background px-3 py-2 text-sm text-foreground ring ring-border focus:outline-none focus:ring-2 focus:ring-ring sm:max-w-sm"
+      data-catalog-search
+      aria-label={examples ? "Search the examples" : "Search the library"}
+    />
+    {filters.length > 0 && <div class="flex flex-wrap gap-1.5" role="group" aria-label="Filter by kind">
+      {filters.map((f, i) => (
+        <button
+          type="button"
+          class="rounded-full px-3 py-1 text-xs ring ring-border hover:bg-accent aria-pressed:bg-primary aria-pressed:text-primary-foreground"
+          aria-pressed={i === 0 ? "true" : "false"}
+          data-catalog-filter={f.id}
+        >
+          {f.label}
+        </button>
+      ))}
+    </div>}
+  </div>
+  <p class="mt-3 text-sm text-muted-foreground" data-catalog-empty hidden>Nothing matches.</p>
+
+  {categories.map((category) => {
+    const items = entries.filter((c) => c.category === category.id);
+    return (
+      <section class="mt-8" data-catalog-section>
+        <h2 class="text-lg font-semibold text-foreground" id={category.id}>{category.title}</h2>
+        <p class="mt-1 text-sm text-muted-foreground">{category.blurb}</p>
+        <div class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {items.map((c) => (
+            <a
+              href={pageUrl(c)}
+              class="group block rounded-lg bg-card p-4 shadow-sm ring ring-border transition hover:ring-2 hover:ring-ring"
+              data-catalog-item
+              data-kind={c.kind}
+              data-text={[c.name, c.summary, c.shows ?? "", KINDS[c.kind], c.category, ...(c.tags ?? []), ...(c.formats ?? [])].join(" ").toLowerCase()}
+            >
+              <div class="flex items-center gap-2">
+                <Icon name={c.icon} class="h-5 w-5 shrink-0 text-foreground" />
+                <span class="truncate font-mono text-sm font-semibold text-foreground group-hover:underline">{c.name}</span>
+              </div>
+              <p class="mt-2 text-sm leading-snug text-muted-foreground">{c.summary}</p>
+              {c.shows && <p class="mt-2 text-xs leading-snug text-muted-foreground"><span class="font-medium text-foreground">Shows:</span> {c.shows}</p>}
+              <div class="mt-3 flex flex-wrap gap-1">
+                {examples ? <Badge text={singular[c.category]} variant="warning" /> : <Badge text={KINDS[c.kind]} variant="info" />}
+              </div>
+            </a>
+          ))}
+        </div>
+      </section>
+    );
+  })}
+</div>
+
+<script>
+  for (const catalog of document.querySelectorAll<HTMLElement>("[data-catalog]")) {
+    const search = catalog.querySelector<HTMLInputElement>("[data-catalog-search]")!;
+    const buttons = [...catalog.querySelectorAll<HTMLButtonElement>("[data-catalog-filter]")];
+    const empty = catalog.querySelector<HTMLElement>("[data-catalog-empty]")!;
+    let filter = "all";
+
+    const matches = (item: HTMLElement) => {
+      const words = search.value.toLowerCase().split(/\s+/).filter(Boolean);
+      const text = item.dataset.text ?? "";
+      const kind = filter === "all" || item.dataset.kind === filter;
+      return kind && words.every((w) => text.includes(w));
+    };
+
+    const update = () => {
+      let shown = 0;
+      for (const section of catalog.querySelectorAll<HTMLElement>("[data-catalog-section]")) {
+        let inSection = 0;
+        for (const item of section.querySelectorAll<HTMLElement>("[data-catalog-item]")) {
+          const show = matches(item);
+          item.hidden = !show;
+          if (show) inSection++;
+        }
+        section.hidden = inSection === 0;
+        shown += inSection;
+      }
+      empty.hidden = shown > 0;
+    };
+
+    search.addEventListener("input", update);
+    for (const button of buttons) {
+      button.addEventListener("click", () => {
+        filter = button.dataset.catalogFilter ?? "all";
+        for (const b of buttons) b.setAttribute("aria-pressed", String(b === button));
+        update();
+      });
+    }
+  }
+</script>

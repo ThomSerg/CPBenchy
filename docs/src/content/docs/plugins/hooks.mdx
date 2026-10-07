@@ -1,0 +1,102 @@
+---
+title: Hook reference
+description: Every hook, on which side it runs, and the objects hooks get.
+sidebar:
+  order: 7
+---
+
+<Aside type="caution" title="Under construction">
+  Writing plugins is still being worked on: the hooks, the `Observer` and `Loader` classes and these
+  pages may change. To use the plugins and observers that come with cpbenchy, see the
+  [library](/library/).
+</Aside>
+
+The docstrings in `cpbenchy/hookspecs.py` (parent) and `cpbenchy/worker/hookspecs.py` (worker) are the
+authoritative reference. A hook marked **first result** stops at the first implementation that returns
+something other than `None`.
+
+## Observer methods and their hooks
+
+Each [observer](/plugins/observers/) method is called from a hook. An observer with `formats` set is
+called only for runs on instances of those formats.
+
+| Observer method | Hook | Side |
+|---|---|---|
+| `on_load(ctx)` | `cpbenchy_worker_load` | worker |
+| `on_solver(ctx)` | `cpbenchy_worker_solver` | worker |
+| `solver_args(ctx)` | `cpbenchy_worker_solver_args` | worker |
+| `on_solution(ctx, objective)` | `cpbenchy_worker_solution` | worker |
+| `on_finish(ctx)` | `cpbenchy_worker_finish` | worker |
+| `on_session_start(session)` | `cpbenchy_sessionstart` | parent |
+| `on_start(run)` | `cpbenchy_run_start` | parent |
+| `on_event(run, event)` | `cpbenchy_run_event` | parent |
+| `on_result(run, result)` | `cpbenchy_run_finished` | parent |
+| `on_session_end(session)` | `cpbenchy_sessionfinish` | parent |
+
+## Parent hooks
+
+Called in this order, all on the main thread:
+
+| Hook | |
+|---|---|
+| `cpbenchy_addoption(parser)` | Add options with `parser.getgroup("mine").addoption("--x", ...)`, which takes argparse's arguments. *Historic*: plugins registered later still get it. |
+| `cpbenchy_configure(config)` | After parsing. Read options with `config.getoption("x")`, or register plugin objects. *Historic.* |
+| `cpbenchy_collect(source, config)` | **First result.** A list of `Instance`s from one source, or `None` if this plugin doesn't handle it. |
+| `cpbenchy_modify_runs(config, runs)` | Filter, reorder or extend the list of `RunSpec`s, in place. Runs whose results are already stored are skipped afterwards (unless `--rerun`). |
+| `cpbenchy_make_executor(config)` | **First result.** The `Executor` that runs the workers. |
+| `cpbenchy_sessionstart(session)` | Before the first run starts. `session.runs` holds the runs. |
+| `cpbenchy_run_start(run)` | A run is about to start. `run.cmd` and `run.env` can still be changed. |
+| `cpbenchy_run_event(run, event)` | An event from the run's worker: `event.t` (seconds), `event.kind`, `event.data`. |
+| `cpbenchy_run_finished(run, result)` | A run ended. Add to `result.extra` here, before the result is stored. |
+| `cpbenchy_sessionfinish(session)` | All runs are done, or the session was interrupted (`session.interrupted`). |
+
+The built-in event kinds are `loaded`, `transformed`, `solving`, `solution` and `result`. Worker plugins
+can emit their own.
+
+## Worker hooks
+
+Called in this order, in the measured process:
+
+| Hook | |
+|---|---|
+| `cpbenchy_worker_start(ctx)` | First, before the worker imports CPMpy, for example to patch a solver package. |
+| `cpbenchy_worker_load(ctx)` | **First result.** Load `ctx.spec.instance` into a `cpmpy.Model`. Timed as `parse_s`. |
+| `cpbenchy_worker_solver(ctx)` | **First result.** Create the solver for `ctx.model`. Timed as `transform_s`. |
+| `cpbenchy_worker_solver_args(ctx)` | A dict of `solve()` arguments, or `None`. All the dicts are merged; on a conflict, the implementation called first wins, and the run's `params` win over all of them. |
+| `cpbenchy_worker_solve(ctx)` | **First result.** Solve `ctx.solver` with `ctx.solver_args` within `ctx.time_left()`. Timed as `solve_s`. |
+| `cpbenchy_worker_solution(ctx, objective)` | A solution was found, reported with `ctx.report_solution`. |
+| `cpbenchy_worker_finish(ctx)` | Always last, also after an error, and when the run is stopped at its limit (`--terminate`): then from another thread, with the best solution restored on the model's variables. `ctx.status` and `ctx.objective` are final. |
+
+## What hooks get
+
+**`ctx`** (`cpbenchy.worker.context.WorkerContext`):
+
+| | |
+|---|---|
+| `spec` | the run's `RunSpec`: `instance`, `solver`, `params`, `seed`, `cores`, `limits` |
+| `options` | the session's options (JSON-safe), including plugin options |
+| `model`, `solver`, `solver_args` | filled in as the run goes |
+| `status`, `objective`, `error`, `times` | the outcome so far |
+| `elapsed()`, `time_left()`, `cputime()` | seconds since the worker started; what is left of the time limits (wall and CPU); CPU time used |
+| `terminated` | why the run was stopped at its limit (`walltime`, `cputime` or `signal`), or `None` |
+| `artifact(name)` | a file of the run's own, `logs/<run_id>.<name>`; in the parent, `run.artifact(name)` |
+| `record(key, value)` | add a JSON-safe value to the result's `extra` |
+| `emit(kind, **data)` | send an event to the parent |
+| `report_solution(objective)` | for solver callbacks: emits a `solution` event and calls `cpbenchy_worker_solution` |
+| `log(message)` | a timestamped line in the run's log |
+
+`ctx.options["stdout"]` is true under `cpbenchy solve`, where output for the competition goes to
+stdout instead of to files.
+
+**`run`** (`cpbenchy.session.Run`): `spec`, `run_id`, `cmd`, `env`, `cpus`, `memory_nodes`,
+`log_file`, `events_file`, `report` (the worker's report, once it has arrived), and `extra`, which is
+copied into the result.
+
+**`result`** (`cpbenchy.result.RunResult`): the record that is stored; see the
+[result record](/reference/result-record/).
+
+**`config`** (`cpbenchy.config.Config`): `getoption(name)`, `pluginmanager`, `hook`, `sources`.
+
+**`session`** (`cpbenchy.session.Session`): `config`, `runs`, `results`, `executor`, `store`,
+`collected` (runs before `cpbenchy_modify_runs`), `already_done` (selected runs skipped because their
+results are stored), `interrupted`.

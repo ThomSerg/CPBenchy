@@ -1,0 +1,59 @@
+---
+title: Your first benchmark
+description: Compare two solvers on a set of instances from the command line, and look at the results.
+sidebar:
+  order: 2
+---
+
+<Steps>
+  <Step title="Get some instances">
+    Any instance files work: XCSP3, OPB, WCNF, DIMACS, MPS and more, compressed or not. To start
+    from a benchmark set, download a [CPMpy dataset](https://cpmpy.readthedocs.io/en/latest/modeling.html#datasets):
+
+    ```python
+    from cpmpy.tools.datasets import OPBDataset
+
+    OPBDataset(root="data", year=2024, track="OPT-LIN", download=True)   # into data/opb/
+    ```
+  </Step>
+  <Step title="Run two solvers">
+    Give the instances, the solvers, and a time limit in seconds:
+
+    ```sh
+    cpbenchy run data/opb/ -s ortools -s exact -t 60 --limit 10
+    ```
+
+    `--limit 10` keeps this first try to 10 instances. While it runs, you see the active runs and
+    their best solution so far, and at the end a summary per solver.
+  </Step>
+  <Step title="Look at the results">
+    Results are stored in `cpbenchy-results/`:
+
+    ```sh
+    cpbenchy show                         # summary per solver
+    cpbenchy show --runs                  # every run
+    cpbenchy show --csv > results.csv     # everything, as CSV
+    ```
+  </Step>
+  <Step title="Run again">
+    Run the command again, without `--limit` or with another solver added. cpbenchy only does the
+    runs it has no results for yet.
+  </Step>
+</Steps>
+
+## Next steps
+
+- **More options**: a memory limit (`-m 4096`), runs in parallel (`-j 4`), seeds, solver
+  parameters, which instances. See the [`cpbenchy run` reference](/reference/cli/#cpbenchy-run), which
+  also shows how to keep your options in a `cpbenchy.toml` file.
+- **Check the solutions**, keep them, score the solvers: the [library](/library/) has ready-made
+  extras, each enabled with one option.
+- **Run as in a competition**, with its limits and its output. For the Pseudo-Boolean competition,
+  scaled to a twentieth of its time and with 8 GiB per run:
+
+  ```sh
+  cpbenchy run data/opb/ -s ortools -s exact --rules pb26 --scale 0.05 -m 8192 --limit 10
+  ```
+
+  See [rules](/guides/rules/).
+- **From Python**: [the same, as a script](/getting-started/python/).

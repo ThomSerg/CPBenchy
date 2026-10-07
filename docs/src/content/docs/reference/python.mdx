@@ -1,0 +1,171 @@
+---
+title: Python API
+description: The classes and functions exported by the cpbenchy package.
+sidebar:
+  order: 2
+---
+
+Everything below is importable from `cpbenchy` directly.
+
+## cpbenchy.run
+
+```python
+cpbenchy.run(
+    *sources, solvers, time_limit=None, mem_limit_mib=None, cpu_time_limit=None, rules=None,
+    params=None, seeds=None, cores=None, loader=None, jobs=1, out=None, executor="auto", rerun=False,
+    quiet=False, plugins=(), args=(), on_result=None, on_solution=None,
+) -> Results
+```
+
+Runs every solver, with every seed, on every instance of the sources, and returns the results of the
+runs it did. It is an `Experiment` with one `add`; the arguments are explained there.
+
+## cpbenchy.run_async
+
+```python
+await cpbenchy.run_async(*sources, ...) -> Results
+```
+
+`cpbenchy.run` for asyncio, with the same arguments. See [From asyncio](/guides/experiments/#from-asyncio).
+
+## cpbenchy.load
+
+```python
+cpbenchy.load(out) -> Results
+```
+
+All results stored in an output directory (or a `results.jsonl` file).
+
+## Experiment
+
+```python
+cpbenchy.Experiment(
+    out=None, *, time_limit=None, mem_limit_mib=None, cpu_time_limit=None, cores=None, loader=None,
+    rules=None, jobs=1, executor="auto", rerun=False, quiet=False, plugins=(), args=(),
+)
+```
+
+| | |
+|---|---|
+| `out` | output directory; a fresh temporary directory if `None` |
+| `time_limit`, `mem_limit_mib`, `cpu_time_limit`, `cores`, `loader` | defaults for `add` |
+| `rules` | [rules](/guides/rules/) to follow: a built-in name, a `.toml` file or a `Rules`; they set what isn't given explicitly |
+| `jobs` | runs in parallel |
+| `executor` | `"auto"`, `"runlimit"`, `"subprocess"`, `"inline"`, or one added by a plugin |
+| `rerun` | also run what is already stored in `out` |
+| `quiet` | no terminal output |
+| `plugins` | plugin objects, or references (`"module"`, `"module:Class"`, `"file.py"`) |
+| `args` | extra command-line arguments, e.g. options added by plugins |
+
+**`add(*sources, solver=None, solvers=(), params=None, seeds=None, time_limit=None, mem_limit_mib=None, cpu_time_limit=None, cores=None, loader=None) -> Experiment`**
+runs each solver, with each seed, on every instance of the sources. Sources are CPMpy datasets,
+instance files, directories, glob patterns, `Instance`s, or lists of these.
+
+**`add_runs(runs) -> Experiment`** adds `RunSpec`s as they are.
+
+**`runs`** (property) is everything the experiment runs, including runs `out` already has results for.
+
+**`iter_results(*, on_result=None, on_solution=None)`** runs, yielding each `RunResult` as its run
+finishes. Stopping early stops the runs still going.
+
+**`run(*, on_result=None, on_solution=None) -> Results`** runs, and returns this session's results when
+all runs are done.
+
+**`await run_async(...)`** and **`async for result in iter_results_async(...)`** are the same for
+asyncio: the event loop stays free, and runs go on while the loop body awaits. See [From
+asyncio](/guides/experiments/#from-asyncio).
+
+**`results() -> Results`** returns everything stored in `out`.
+
+The callbacks are called as `on_result(result)` and `on_solution(run_spec, seconds, objective)`.
+
+## Results
+
+A list of `RunResult`, with:
+
+| | |
+|---|---|
+| `Results.load(out)` | from an output directory or `results.jsonl` |
+| `to_pandas()` | a DataFrame, one row per run, with a `solved` column; `extra` fields become `extra.<name>` columns (needs pandas: `pip install cpbenchy[pandas]`) |
+| `to_records()` | a list of dicts |
+| `where(**conditions)` | the results whose fields equal the given values |
+
+## RunResult
+
+One run's record. See the [result record](/reference/result-record/) for its fields. Also has
+`solved` (property), and `to_dict()` / `from_dict()`.
+
+## RunSpec, Instance, Limits
+
+What to run, as plain data. Also what the worker gets, as JSON.
+
+```python
+RunSpec(instance, solver, limits, params={}, seed=None, cores=1, loader=None)
+Instance(path, name, dataset=None, format=None, metadata={})
+Instance.from_path(path, **kwargs)     # name from the file name, without format and compression suffixes
+Limits(time_s, mem_mib=None, cputime_s=None)   # wall time, memory, CPU time
+```
+
+`RunSpec.run_id` is a hash of what the run measures: instance (dataset and name if known, else its
+path), solver, params, seed, cores and limits. `to_dict()` / `from_dict()` convert a spec to and from
+JSON-safe dicts.
+
+## cpbenchy.backend
+
+For another experiment runner. Submit what to measure; get the stats back, tagged with the runner's
+own id. See [Using cpbenchy from your framework](/guides/backend/).
+
+```python
+Submission(spec, key, metadata={})
+BackendResult(key, metadata, result, log)
+
+cpbenchy.backend.run(
+    submissions, *, jobs=1, executor="auto", plugins=(), args=(), out=None, quiet=False, on_result=None,
+) -> list[BackendResult]
+```
+
+`key` and `metadata` are returned unchanged and are not part of `run_id`. Submissions that share a
+`run_id` are measured once, and each gets a `BackendResult`. `result` is a `RunResult`. `log` is the
+worker output, or `None`. `on_result(item)` is called as each measurement finishes, once per key.
+
+## Library modules
+
+| Module | |
+|---|---|
+| `cpbenchy.observers` | the built-in observers: `XCSP3Output`, `PBOutput`, `MaxSATOutput`, `SATOutput`, `SaveSolution`, `CheckSolutions`, `ModelSize`, and `CompetitionOutput` to build on. See the [library](/library/#output) |
+| `cpbenchy.formats` | solutions as text and back: XCSP3 instantiations, literals, bit strings, `s` lines; `load_cnf`. See [Solution formats](/library/solution-formats/) |
+| `cpbenchy.check` | `check_solution(model, solution, objective=None) -> CheckResult`, and `recheck(out, results=None, loader=None)` for stored runs. See [cpbenchy check](/library/solution-checker/) |
+| `cpbenchy.scoring` | `par(result, factor=2, time=None)` and `par_totals(results, factor=2, time=None, by=("solver",))`: PAR-k scores. See [PAR-k](/library/par/) |
+| `cpbenchy.rules` | `Rules.load(name_or_file)`, `Rules.from_toml(text)`, and `builtin()`: the rules that come with cpbenchy. See [Rules](/guides/rules/) |
+| `cpbenchy.submission` | `Submission.load(file, solver=None)` and `build(submission, out)`, behind `cpbenchy submission`. See [Competition submissions](/guides/submissions/) |
+
+## Observer, Loader
+
+```python
+class MyObserver(cpbenchy.Observer):
+    formats = None                         # or e.g. ("xcsp3",): only runs on these formats
+    # in the worker
+    def on_load(self, ctx): ...            # -> a cpmpy.Model, or None
+    def on_solver(self, ctx): ...          # -> a solver, or None
+    def solver_args(self, ctx): ...        # -> a dict of solve() arguments, or None
+    def on_solution(self, ctx, objective): ...
+    def on_finish(self, ctx): ...
+    # in the parent
+    def on_session_start(self, session): ...
+    def on_start(self, run): ...
+    def on_event(self, run, event): ...
+    def on_result(self, run, result): ...
+    def on_session_end(self, session): ...
+
+class MyLoader(cpbenchy.Loader):
+    def load(self, instance): ...          # -> a cpmpy.Model; the default reads it with CPMpy
+    # helpers: self.read(path) (decompressed contents), self.opener(path) (a decompressing open)
+```
+
+Constructor arguments of both must be Python literals when they are created again in the worker. See
+[Writing an observer](/plugins/observers/) and [Writing a loader](/plugins/loaders/).
+
+## Plugin markers
+
+`cpbenchy.hookimpl` and `cpbenchy.hookspec` are pluggy's markers for the `cpbenchy` project. See
+[Plugins with hooks](/plugins/writing-plugins/).

@@ -1,0 +1,64 @@
+---
+title: "CheckSolutions"
+description: "Catches wrong answers: every solution is checked against the model, and a wrong one counts as an error."
+sidebar:
+  hidden: true
+---
+
+<PackageHeader id="check-solutions" />
+
+## What it does
+
+Solvers have bugs, and so do model transformations. `CheckSolutions` checks every solution against
+the model it was loaded as, right after solving, inside the run:
+
+1. **assignment**: every variable has a value (CPMpy's auxiliary variables may be missing)
+2. **domain**: every value is within its variable's bounds
+3. **constraints**: every constraint holds
+4. **objective**: the objective's value is within its bounds, and equals what the solver reported
+
+A wrong solution turns the run into an `error`, with what is wrong in its `error` field, so wrong
+answers stand out in the summary instead of counting as solved.
+
+## Use it
+
+<CodeGroup titles={["Python", "Command line"]}>
+
+```python
+import cpbenchy
+from cpbenchy import observers
+
+cpbenchy.run("instances/", solvers=["ortools", "exact"], time_limit=60, plugins=[observers.CheckSolutions()])
+```
+
+```sh
+cpbenchy run instances/ -s ortools -s exact -t 60 -p cpbenchy.observers:CheckSolutions
+```
+
+</CodeGroup>
+
+## What it records
+
+`extra["check"]`, for every run with a solution:
+
+```json
+{"valid": false, "summary": "INVALID (constraint: 1, objective_mismatch: 1)", "source": "worker",
+ "objective": -14,
+ "violations": ["[constraint] violated: sum([2, 3, 4, 1] * [x1, x2, x3, x4]) <= 6",
+                "[objective_mismatch] the objective is -14 under the solution, but -9 was declared"],
+ "n_violations": 2, "warnings": []}
+```
+
+`warnings` lists what could not be verified without being wrong: for example, constraints over
+auxiliary variables the solver didn't give a value.
+
+## Notes
+
+It runs before the other observers finish, so competition output and saved solutions already see the
+corrected status. That is why it is a plugin with a `tryfirst` hook rather than an observer; you use it
+the same way. The checks are [`check_solution`](/library/solution-checker/), which also checks
+solutions after the fact.
+
+## Implementation
+
+<PackageSource id="check-solutions" />

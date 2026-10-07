@@ -1,0 +1,213 @@
+---
+title: Using cpbenchy from your framework
+description: Your framework decides what to run and stores the results; cpbenchy measures the runs, with reliable limits and timings.
+sidebar:
+  order: 5
+  label: From your framework
+  badge:
+    text: WIP
+    variant: caution
+---
+
+<Aside type="caution" title="Under construction">
+  Using cpbenchy from your own framework is still being worked on: `cpbenchy.backend` and this page may
+  change.
+</Aside>
+
+This page is for you if you already have your own way of running experiments, such as a sweep tool, a
+job database, a lab framework or a pipeline. It already knows which runs exist, which are done and
+where results go. What you want from cpbenchy is the measuring: running a CPMpy solver on an instance
+under limits that hold, and reporting the time, memory and answer.
+
+`cpbenchy.backend` does only that part. You hand it a list of runs, each tagged with your own id, and
+you get back one result per run, tagged with the same id. What cpbenchy otherwise does for you, such
+as finding instances, skipping finished runs and storing results, is left to your framework.
+
+| Your framework | cpbenchy |
+|---|---|
+| decides which runs exist, and which still need doing | runs each solver in its own process, under its time, CPU time and memory limits |
+| names each run with its own id | pins runs to cores and runs them in parallel without disturbing each other |
+| stores the results where it wants | measures wall time, CPU time and memory, and reads the solver's answer |
+| retries, resumes, schedules over machines | turns every failure of a run into a result, never an exception |
+
+## An example
+
+Take a framework that keeps its trials in a SQLite table, and fills in a result for each. Each time
+you run this script, it measures the trials that have no result yet:
+
+```python
+import json
+import sqlite3
+
+from cpbenchy import Instance, Limits, RunSpec
+from cpbenchy.backend import Submission, run
+
+db = sqlite3.connect("trials.db")   # a table: trials(id, path, solver, seed, result)
+
+# Your framework decides what still needs doing: here, the rows without a result.
+todo = db.execute("SELECT id, path, solver, seed FROM trials WHERE result IS NULL").fetchall()
+
+submissions = [
+    Submission(
+        RunSpec(Instance.from_path(path), solver, Limits(time_s=60, mem_mib=4096), seed=seed),
+        key=str(trial_id),
+    )
+    for trial_id, path, solver, seed in todo
+]
+
+def store(item):
+    # Called as each run finishes: store it now, so an interrupted call loses nothing.
+    db.execute("UPDATE trials SET result = ? WHERE id = ?", (json.dumps(item.result.to_dict()), int(item.key)))
+    db.commit()
+
+run(submissions, jobs=4, out="cpbenchy-scratch", on_result=store)
+```
+
+Afterwards, each row holds a result such as
+`{"status": "optimal", "objective": -9, "walltime_s": 1.40, "memory_mib": 55.4, ...}`.
+
+The rest of this page goes through the steps: describing a run, what comes back, and what happens
+when something goes wrong.
+
+## Describing a run
+
+A `RunSpec` says exactly what to measure. It is plain data:
+
+```python
+RunSpec(
+    instance=Instance.from_path("data/knapsack.opb"),
+    solver="ortools",                      # any CPMpy solver name
+    limits=Limits(time_s=60, mem_mib=4096, cputime_s=None),
+    params={"num_search_workers": 1},      # solver parameters, passed to solve()
+    seed=1,                                # None: the solver's default
+    cores=1,                               # cores the run gets to itself
+    loader=None,                           # None: CPMpy reads the file by its extension
+)
+```
+
+- **The instance** is a file the worker reads, so its path must exist on the machine that runs the
+  call. Any format CPMpy reads works: XCSP3, OPB, WCNF, DIMACS, MPS and more, compressed or not.
+  `Instance.from_path` names it after the file. Pass `dataset="..."` to tell apart instances that
+  share a name, and `format="opb"` when the extension doesn't say.
+- **Your own formats**: write a [`Loader`](/plugins/loaders/) and
+  pass its reference as `loader=`, for example `"mypkg.loaders:KnapsackJSON"`.
+- **Limits**: `time_s` is wall time and is required. `mem_mib` and `cputime_s` are optional. See
+  [Measurement and limits](/guides/limits/) for how they are enforced.
+
+Then wrap it in a `Submission` with your id:
+
+```python
+Submission(spec, key="trial-42", metadata={"sweep": "lr-0.1"})
+```
+
+`key` is any string you use to find the row again. `metadata` is any dictionary you want back with
+the result, so `on_result` doesn't have to look it up.
+
+### Run ids
+
+Each `RunSpec` has a `run_id`: a short hash of what it measures. That is the instance, the solver,
+the parameters, the seed, the cores and the limits. It leaves out your `key` and `metadata`. An
+instance with a `dataset` counts by its dataset and name, so it keeps its id when its files move. An
+instance without one counts by its path.
+
+- **Duplicates run once.** Submissions with the same `run_id` are measured once, and each gets the
+  result, under its own key. If ten trials of yours ask for the same measurement, it costs one run.
+- **A cache key.** The id stays the same between calls, so you can store `spec.run_id` with each
+  result and look up a measurement you already have before you submit it again.
+
+## What comes back
+
+`run` returns a list with one `BackendResult` per submission. It calls `on_result(item)` with each of
+them as soon as its run finishes, in your own process and thread:
+
+| | |
+|---|---|
+| `item.key`, `item.metadata` | what you submitted |
+| `item.result` | the `RunResult`: the measurement and the answer |
+| `item.log` | the worker's output (stdout and stderr), or `None`; worth keeping for failed runs |
+
+The fields of `item.result` you will most often store:
+
+| Field | |
+|---|---|
+| `status` | `optimal`, `feasible`, `unsat`, `unknown`, `timeout`, `memout` or `error` |
+| `objective` | the best objective value found, for optimization problems |
+| `solved` | `True` for an optimal or unsat answer, and for a solution to a satisfaction problem |
+| `walltime_s`, `cputime_s`, `memory_mib` | what the run used, measured from outside |
+| `parse_s`, `transform_s`, `solve_s` | where the time went, measured in the worker |
+| `reliable` | `False` when the machine couldn't enforce limits exactly; see [executors](/guides/limits/#executors) |
+| `error` | what went wrong, for status `error` |
+| `extra` | what plugins recorded |
+
+`item.result.to_dict()` gives all fields as a JSON-ready dictionary, and `RunResult.from_dict` reads
+it back. [The result record](/reference/result-record/) lists every field.
+
+## When things go wrong
+
+**A failing run is a result, not an exception.** A missing file, an unknown solver, a solver that
+crashes or a model that doesn't load: each gives a result with status `error` and a message in
+`error`, and the other runs go on. A run that hits its limit gives `timeout` or `memout`. So
+`on_result` is called once for every submission.
+
+**A problem with the whole call raises `cpbenchy.errors.UsageError`** before any run starts. For
+example, `jobs=4` runs of 16 GiB each don't fit on a 32 GiB machine.
+
+**An interrupted call keeps what is done.** Ctrl-C stops the runs still going and raises
+`KeyboardInterrupt` from `run`. They get no result, and the runs that had finished already went
+through `on_result`. That is why the example stores in `on_result` rather than from what `run`
+returns. Next time, your framework submits what is still missing.
+
+## Checking solutions and more
+
+Plugins and [observers](/library/) work here as in any other run. Pass them as `plugins=`, and
+their options, or any other command-line option, as `args=`. What they record ends up in
+`item.result.extra`. To check every solution against the model:
+
+```python
+run(submissions, plugins=["cpbenchy.observers:CheckSolutions"], on_result=store)
+# item.result.extra["check"] == {"valid": True, ...}; a wrong solution makes the status "error"
+```
+
+To let solvers stop at their limit with their best solution, as competitions do, pass
+`args=["--terminate", "--grace", "5"]`; see [stopping runs at their limit](/guides/limits/#stopping-runs-at-their-limit).
+
+## Settings
+
+```python
+run(
+    submissions,
+    jobs=1,                    # runs in parallel on this machine
+    executor="auto",           # how runs are measured; see Measurement and limits
+    plugins=[],                # plugin objects or references
+    args=[],                   # any command-line option, including those of plugins
+    out=None,                  # cpbenchy's own working directory
+    quiet=False,               # True: no live view in the terminal
+    on_result=None,
+)
+```
+
+`run` returns when all submissions are done, and `on_result` runs in between. Keep it quick: while it
+runs, no new run starts. A database write is fine.
+
+**`out`** is where cpbenchy keeps what it needs while it runs: the workers' logs, and a copy of the
+results in its own format (`results.jsonl`). Your framework doesn't need to read it. Without `out`,
+each call makes a new temporary directory and leaves it in place, so pass a directory of your own and
+delete it when you like. Runs are measured even when `out` already has them, because deciding what to
+skip is up to your framework.
+
+## Scaling out
+
+One call measures on one machine, using its cores in parallel. Don't make two calls at the same time
+on one machine: each places its runs on the cores by itself, so they would share cores and disturb
+each other's timings.
+
+To spread runs over several machines, such as the nodes of a cluster, let your framework give each
+machine its own part of the submissions, and make one call there. The instance files must be
+readable on each. To run the workers somewhere else entirely, for example in containers, write an
+[executor](/plugins/recipes/#run-the-workers-somewhere-else).
+
+## When you don't need this
+
+If you don't already have your own bookkeeping, use an [`Experiment`](/guides/experiments/) instead.
+It finds the instances, skips the runs that are done and stores the results, with the same
+measurements.

@@ -1,0 +1,44 @@
+---
+title: "ModelSize"
+description: "Notes how big each model is, to relate solving times to model size."
+sidebar:
+  hidden: true
+---
+
+<PackageHeader id="model-size" />
+
+## What it does
+
+Counts the variables (and how many are Boolean) and the constraints of every model, as loaded, so you
+can relate solving times to model size.
+
+## Use it
+
+<CodeGroup titles={["Python", "Command line"]}>
+
+```python
+import cpbenchy
+from cpbenchy import observers
+
+results = cpbenchy.run("instances/", solvers=["ortools"], time_limit=60, plugins=[observers.ModelSize()])
+results.to_pandas().groupby(["solver", "status"])["extra.n_variables"].describe()
+```
+
+```sh
+cpbenchy run instances/ -s ortools -t 60 -p cpbenchy.observers:ModelSize
+cpbenchy show --by solver,status
+```
+
+</CodeGroup>
+
+## What it records
+
+| | |
+|---|---|
+| `extra["n_variables"]` | the model's decision variables |
+| `extra["n_boolvars"]` | of which Boolean |
+| `extra["n_constraints"]` | the model's top-level constraints |
+
+## Implementation
+
+<PackageSource id="model-size" />

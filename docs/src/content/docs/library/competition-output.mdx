@@ -1,0 +1,51 @@
+---
+title: "CompetitionOutput"
+description: "The starting point for the output of another competition: you describe the solution, the rest is done."
+sidebar:
+  hidden: true
+---
+
+<PackageHeader id="competition-output" />
+
+## What it does
+
+The base of the competition output observers. It writes the `o` lines while solving and the `s` line at
+the end; a subclass only says which file it writes, which instance formats it applies to, and how the
+solution looks.
+
+## Use it
+
+Subclass it, set `name` (the output file is `logs/<run_id>.<name>.out`) and `formats`, and return the
+solution's lines (without `v `) from `solution`:
+
+```python
+from cpbenchy import formats
+from cpbenchy.observers import CompetitionOutput
+
+class SchedulingOutput(CompetitionOutput):
+    name = "schedule"
+    formats = ("jsplib", "rcpsp")
+
+    def solution(self, ctx):  # v start[0] = 3, v start[1] = 0, ...
+        solution = formats.solution_dict(formats.instance_variables(ctx.model))
+        return [f"{name} = {value}" for name, value in solution.items()]
+```
+
+Use it like any observer: `-p myoutput.py:SchedulingOutput`, or in rules. Under
+[`cpbenchy solve`](/library/solve/), it writes to stdout instead, for submissions.
+
+## What it gives you
+
+| | |
+|---|---|
+| `solution(ctx)` | override: the solution, as the lines after `v ` |
+| `on_solution` | writes `o <objective>` for each solution found while solving |
+| `on_finish` | writes the `s` line and the solution, or `s UNSATISFIABLE`, or a comment and `s UNKNOWN` |
+| `write(ctx, *lines)` | appends lines to the output (or stdout) |
+| `output(ctx_or_run)` | the output file, from the worker's `ctx` or the parent's `run` |
+
+[`cpbenchy.formats`](/library/solution-formats/) has the pieces for common formats.
+
+## Implementation
+
+<PackageSource id="competition-output" />

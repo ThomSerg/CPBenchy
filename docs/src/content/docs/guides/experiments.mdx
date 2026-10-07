@@ -1,0 +1,192 @@
+---
+title: Experiments
+description: Different settings per solver, results as runs finish, callbacks, and resuming, from Python.
+sidebar:
+  order: 1
+---
+
+An `Experiment` is a set of runs that share an output directory and session settings. You add to it
+in parts, each with its own sources, solvers and settings. Then you run it, blocking or streaming.
+
+```python
+import cpbenchy
+
+exp = cpbenchy.Experiment("results/sweep", time_limit=60, mem_limit_mib=4096, jobs=8)
+exp.add(dataset, solver="ortools", params={"num_search_workers": 1})
+exp.add(dataset, solver="gurobi", params={"Threads": 1}, seeds=[1, 2, 3])
+exp.add("hard/*.xml.lzma", solver="ortools", time_limit=600, cores=8)
+
+results = exp.run()
+```
+
+## Saying what to run
+
+`exp.add(*sources, ...)` runs each solver, with each seed, on every instance of the sources. Sources are
+instance files, directories, glob patterns, CPMpy datasets, `Instance`s, or lists of these:
+
+```python
+from cpmpy.tools.datasets import XCSP3Dataset
+
+dataset = XCSP3Dataset(root="data", year=2024, track="COP", download=True)
+```
+
+<Aside type="note" title="Datasets without a loading transform">
+  cpbenchy loads each instance inside the measured process, so it needs file paths from the dataset,
+  not models. Pass the dataset without a `transform` that loads the instances.
+</Aside>
+
+| Argument | |
+|---|---|
+| `solver=` or `solvers=` | one solver, or several |
+| `params=` | solver parameters, passed to `solve()` |
+| `seeds=` | one run per seed; without seeds, one run with the solver's default seed |
+| `time_limit=`, `cpu_time_limit=`, `mem_limit_mib=`, `cores=` | for these runs; unset ones come from the `Experiment`, then from its rules |
+
+`add` returns the experiment, so calls can be chained. For full control, add `RunSpec`s as they are:
+
+```python
+from cpbenchy import Instance, Limits, RunSpec
+
+exp.add_runs([
+    RunSpec(Instance.from_path("a.opb"), "ortools", Limits(time_s=60, mem_mib=4096), params={"linearization_level": 2}),
+])
+```
+
+`exp.runs` lists everything the experiment will run, so you can check it before starting. A run that
+is added twice runs once.
+
+## Running
+
+Each run is its own process, but your program drives the experiment: it starts the next run when a
+slot frees up, follows the runs, and stores each result. There are three ways to do that. Pick one;
+each runs the whole experiment.
+
+### All at once
+
+```python
+results = exp.run()
+```
+
+`run()` runs everything and returns when the last run is done, with the results of this session. Use
+it in scripts that run, then analyse.
+
+### Result by result
+
+```python
+for result in exp.iter_results():
+    print(result.instance, result.solver, result.status, result.objective)
+```
+
+`iter_results()` runs the same experiment, but hands you each result as soon as its run finishes, while
+the other runs go on. Use it to follow the experiment, or to stop it early. If you stop, with `break`,
+an exception or Ctrl-C, the runs still going are stopped and not stored. Running again picks them up.
+
+For just a callback per result, `exp.run(on_result=...)` does the same; see [Callbacks](#callbacks).
+
+<Aside type="caution" title="Keep the loop body quick">
+  While the body of the `for` loop runs, the experiment waits for it: runs already going go on, but no
+  new run starts, and the live view doesn't update, until the loop asks for the next result. Printing
+  or collecting results makes no difference. For slow work, such as writing to a remote database,
+  use the [asyncio version](#from-asyncio), or hand results to a thread of your own.
+</Aside>
+
+### From asyncio
+
+In an event loop (an async script, a web service, a notebook), both ways have an async version, which
+leaves the event loop free while the runs go on. All at once:
+
+```python
+results = await exp.run_async()           # or: await cpbenchy.run_async(...), with run's arguments
+```
+
+Result by result:
+
+```python
+async for result in exp.iter_results_async():
+    await store(result)                   # runs go on, and new ones start, while this awaits
+```
+
+A task in the event loop drives the experiment, so a slow `async for` body doesn't hold up new runs,
+as long as it awaits. Hooks, observers and the `on_result` and `on_solution` callbacks are called in
+the event loop, so they may update what the loop serves, but they should be quick.
+
+Cancelling the task stops the runs still going, as Ctrl-C does, and stores none of them. After a
+`break` out of `async for`, that happens when the generator is closed, which asyncio does soon after.
+To close it at once, use `contextlib.aclosing`:
+
+```python
+async with contextlib.aclosing(exp.iter_results_async()) as results:
+    async for result in results:
+        if result.status == "error":
+            break
+```
+
+<Aside type="caution" title="One experiment at a time">
+  Each experiment places its runs on the machine's cores by itself. Two experiments running at the same
+  time, in one event loop or in two processes, end up sharing cores and memory, which disturbs the
+  measurements. Run them one after the other, or as one experiment with several `add`s.
+</Aside>
+
+### Callbacks
+
+```python
+def progress(run, t, objective):
+    print(f"{run.instance.name} {run.solver}: {objective} after {t:.1f}s")
+
+exp.run(on_result=print, on_solution=progress)
+```
+
+`on_result(result)` is called as each run finishes. `on_solution(run, t, objective)` is called live for
+each solution of an optimization problem; `t` is in seconds since the worker started. `cpbenchy.run`
+takes the same two callbacks.
+
+The callbacks run in your own process, so any function works, closures included. They see what the runs
+report, a fraction of a second later, and cost the runs nothing. To act inside the measured run, for
+example to see each solution's variable values, use an observer or a plugin, passed with `plugins=`:
+
+| | Runs in | Sees | Defined as |
+|---|---|---|---|
+| `on_result=`, `on_solution=` | your process | results; the objective of each solution | any function |
+| an [`Observer`](/plugins/observers/) | both processes, by method | everything about the run, the model and the solver included | a class in a `.py` file |
+| a [plugin](/plugins/writing-plugins/) | both processes, by hook | everything, and can replace any step | hook functions in a `.py` file |
+
+Observers and plugins must live in an importable `.py` file, because the run is another process. The
+[library](/library/) has observers ready to use.
+
+## Resuming
+
+A run's id is a hash of what it measures: instance, solver, parameters, seed, cores and limits. Runs
+whose id is already in the output directory are skipped. So you can grow an experiment (add a solver, a
+seed, more instances) and run it again, and only the new runs happen. Pass `rerun=True` to run
+everything again.
+
+`exp.run()` returns the results of the session it ran. `exp.results()` returns everything stored in
+the output directory, including earlier sessions.
+
+## Session settings
+
+```python
+cpbenchy.Experiment(
+    out="results/x",       # default: a fresh temporary directory
+    time_limit=60,         # defaults for add()
+    cpu_time_limit=None,
+    mem_limit_mib=4096,
+    cores=1,
+    rules=None,            # e.g. "xcsp3-2025": limits, cores and options that aren't given here
+    jobs=8,                # runs in parallel
+    executor="auto",       # see "Measurement and limits"
+    rerun=False,
+    quiet=False,           # True: no terminal output
+    plugins=[...],         # plugin objects or references
+    args=["--grace", "5"], # any command-line option, including those of plugins
+)
+```
+
+`cpbenchy.run(...)` is an experiment with one `add`. It takes the arguments of both.
+
+With `rules=`, the experiment follows [rules](/guides/rules/): their limits, cores and plugins, for
+whatever isn't given explicitly. Results then record the rules, as `"<name> (modified)"` for runs
+whose own limits differ.
+
+If you have your own framework that decides what to run and stores the results, use cpbenchy
+[from your framework](/guides/backend/) to only measure the runs.

@@ -1,0 +1,40 @@
+---
+title: Examples
+description: "Small, complete files to copy and adapt: plugins, loaders and scripts that show how to do common things with cpbenchy."
+tableOfContents: false
+sidebar:
+  order: 1
+  label: Overview
+---
+
+The repository's `examples/` directory has small, complete examples: plugins, loaders and scripts.
+Unlike the [library](/library/), they don't come with cpbenchy. Each is one file, meant to be copied
+and changed for your own experiments, and each shows how to do something you will want to do your own
+way, such as scoring, storing or analysing. The test suite runs all of them, so they work as shown.
+
+<Catalog of="examples" />
+
+## Using an example
+
+Use an example from a clone of the repository, as it is:
+
+<CodeGroup titles={["Python", "Command line"]}>
+
+```python
+import cpbenchy
+
+cpbenchy.run("instances/", solvers=["ortools"], time_limit=60, plugins=["examples/plugins/sqlite_store.py"])
+```
+
+```sh
+cpbenchy run instances/ -s ortools -t 60 -p examples/plugins/sqlite_store.py
+```
+
+</CodeGroup>
+
+Or copy the file into your own project, change it, and pass your copy instead. For how plugins and
+loaders work, see [writing an observer](/plugins/observers/) and [writing a loader](/plugins/loaders/).
+
+The [library](/library/)'s own observers are worth reading too: `src/cpbenchy/observers.py` shows live
+output from the worker (`on_solution`), final output (`on_finish`), files per run (`ctx.artifact`),
+a check in the parent after each run (`on_result`), and changing a run's status (`CheckSolutions`).

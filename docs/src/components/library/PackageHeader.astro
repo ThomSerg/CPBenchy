@@ -1,0 +1,101 @@
+---
+/**
+ * The top of a library component's (or an example's) page, like a package registry's: what it is, the line to use it, and
+ * the facts (version, last update, authors, source, requirements), partly read from git at build time.
+ *
+ *   <PackageHeader id="check-solutions" />
+ */
+import Icon from "@cloudflare/nimbus-docs/components/Icon.astro";
+import { Badge } from "@/components/ui/badge";
+import { Code } from "@/components/ui/code";
+import { KINDS, component, isBuiltIn } from "@/data/library";
+import { PROJECT_AUTHORS, VERSION, history, snippet, sourceUrl } from "@/lib/library-facts";
+
+interface Props {
+  id: string;
+}
+
+const c = component(Astro.props.id);
+const builtIn = isBuiltIn(c);
+const facts = history(c.source);
+const code = c.source.endsWith(".py") ? snippet(c.source, c.symbol) : null;
+const where = code && c.symbol ? `${c.source}:${code.start}` : c.source;
+const link = sourceUrl(c.source, c.symbol ? code?.start : undefined, c.symbol ? code?.end : undefined);
+const authors = facts.authors.length ? facts.authors : c.author ? [c.author] : PROJECT_AUTHORS;
+const date = facts.updated.toLocaleDateString("en-GB", { year: "numeric", month: "short", day: "numeric" });
+
+// the line to use it, as a whole command where it is an option
+const use = c.use.startsWith("-p") || c.use.startsWith("--loader")
+  ? `cpbenchy run instances/ -s ortools -t 60 ${c.use}`
+  : c.use.startsWith("--rules")
+    ? `cpbenchy run instances/ -s ortools ${c.use}`
+    : c.use.startsWith("--executor") || c.use.startsWith("--terminate") || c.use.startsWith("--par")
+      ? `cpbenchy run instances/ -s ortools -t 60 ${c.use}`
+      : c.use;
+const lang = /^(from |import |cpbenchy\.)/.test(use) ? "python" : "sh";
+const usable = !use.startsWith("on by default");
+---
+
+<section class="not-prose my-6 rounded-lg bg-card p-5 shadow-sm ring ring-border" data-package={c.id}>
+  <div class="flex flex-wrap items-center gap-2">
+    <Icon name={c.icon} class="h-5 w-5 text-foreground" />
+    {builtIn ? <><Badge text={KINDS[c.kind]} variant="info" /><Badge text="Built in" variant="success" /></> : <Badge text="Example" variant="warning" />}
+    <span class="text-sm text-muted-foreground">{builtIn ? "comes with cpbenchy" : "copy it from the repository's examples/"}</span>
+  </div>
+
+  {usable ? <Code code={use} lang={lang} /> : <p class="mt-3 text-sm text-muted-foreground">{c.use}</p>}
+
+  <dl class="mt-4 grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+    <div>
+      <dt class="text-xs uppercase tracking-wide text-muted-foreground">{builtIn ? "Version" : "Distributed as"}</dt>
+      <dd class="m-0 text-foreground">{builtIn ? `cpbenchy ${VERSION}` : "a file in examples/, to copy"}</dd>
+    </div>
+    <div>
+      <dt class="text-xs uppercase tracking-wide text-muted-foreground">Last updated</dt>
+      <dd class="m-0 text-foreground">
+        {date}{!facts.committed && <span class="text-muted-foreground"> (not committed yet)</span>}
+        {facts.commits > 0 && <span class="text-muted-foreground"> · {facts.commits} commit{facts.commits === 1 ? "" : "s"}</span>}
+      </dd>
+    </div>
+    <div>
+      <dt class="text-xs uppercase tracking-wide text-muted-foreground">Authors</dt>
+      <dd class="m-0 text-foreground">{authors.join(", ")}</dd>
+    </div>
+    <div>
+      <dt class="text-xs uppercase tracking-wide text-muted-foreground">Source</dt>
+      <dd class="m-0 font-mono text-foreground">
+        {link ? <a class="underline underline-offset-2" href={link}>{where}</a> : <a class="underline underline-offset-2" href="#implementation">{where}</a>}
+      </dd>
+    </div>
+    {c.shows && (
+      <div class="sm:col-span-2">
+        <dt class="text-xs uppercase tracking-wide text-muted-foreground">Shows</dt>
+        <dd class="m-0 text-foreground">{c.shows}</dd>
+      </div>
+    )}
+    {c.formats && (
+      <div>
+        <dt class="text-xs uppercase tracking-wide text-muted-foreground">Formats</dt>
+        <dd class="m-0 text-foreground">{c.formats.join(", ")}</dd>
+      </div>
+    )}
+    {c.requires && (
+      <div>
+        <dt class="text-xs uppercase tracking-wide text-muted-foreground">Requires</dt>
+        <dd class="m-0 text-foreground">{c.requires.join("; ")}</dd>
+      </div>
+    )}
+    {c.homepage && (
+      <div>
+        <dt class="text-xs uppercase tracking-wide text-muted-foreground">Homepage</dt>
+        <dd class="m-0 truncate text-foreground"><a class="underline underline-offset-2" href={c.homepage}>{c.homepage.replace(/^https?:\/\//, "")}</a></dd>
+      </div>
+    )}
+    {c.tags && (
+      <div>
+        <dt class="text-xs uppercase tracking-wide text-muted-foreground">Tags</dt>
+        <dd class="m-0 flex flex-wrap gap-1">{c.tags.map((t) => <Badge text={t} />)}</dd>
+      </div>
+    )}
+  </dl>
+</section>

@@ -1,0 +1,145 @@
+---
+title: Writing a loader
+description: Benchmark instances in a format of your own, or models you generate, with a Loader.
+sidebar:
+  order: 3
+---
+
+<Aside type="caution" title="Under construction">
+  Writing plugins is still being worked on: the hooks, the `Observer` and `Loader` classes and these
+  pages may change. To use the plugins and observers that come with cpbenchy, see the
+  [library](/library/).
+</Aside>
+
+A loader turns an instance into a CPMpy model. By default, cpbenchy uses CPMpy's own reader for the
+instance's format: XCSP3, OPB, WCNF, DIMACS, MPS and more. Write a loader to benchmark anything else:
+problems in a format of your own, or models built by your own code.
+
+A loader is a class with one method, `load(instance)`, which returns a `cpmpy.Model`. It runs in the
+worker, so building the model is measured, as `parse_s`, just as reading a file of a standard format is.
+
+## Your own file format
+
+Say your knapsack problems are JSON files:
+
+```json title="knapsack_30.json"
+{"capacity": 50, "items": [{"weight": 10, "value": 60}, {"weight": 20, "value": 100}, ...]}
+```
+
+```python title="knapsack_json.py"
+import json
+
+import cpbenchy
+
+
+class KnapsackJSON(cpbenchy.Loader):
+    def load(self, instance):
+        import cpmpy as cp
+
+        data = json.loads(self.read(instance.path))   # read() also opens .xz, .gz, ... files
+        weights = [item["weight"] for item in data["items"]]
+        values = [item["value"] for item in data["items"]]
+        take = cp.boolvar(shape=len(weights), name="take")
+        model = cp.Model(cp.sum(take * weights) <= data["capacity"])
+        model.maximize(cp.sum(take * values))
+        return model
+```
+
+<CodeGroup titles={["Python", "Command line"]}>
+
+```python
+import cpbenchy
+from knapsack_json import KnapsackJSON
+
+cpbenchy.run("data/*.json", solvers=["ortools", "exact"], time_limit=60, loader=KnapsackJSON())
+```
+
+```sh
+cpbenchy run "data/*.json" -s ortools -s exact -t 60 --loader knapsack_json.py:KnapsackJSON
+```
+
+</CodeGroup>
+
+`instance` is an `Instance`: its `path`, its `name` (the file name without extensions), `format`, and
+`metadata`. Import CPMpy inside `load`, so the import is measured as part of loading.
+
+## Models you generate
+
+Instances don't have to be files. Make the `Instance`s yourself, with what the loader needs in
+`metadata`, and a `path` that tells them apart. The path doesn't have to exist:
+
+```python title="nqueens.py"
+import cpbenchy
+from cpbenchy import Instance
+
+
+class NQueens(cpbenchy.Loader):
+    def load(self, instance):
+        import cpmpy as cp
+
+        n = instance.metadata["n"]
+        queens = cp.intvar(0, n - 1, shape=n, name="queen")
+        return cp.Model(
+            cp.AllDifferent(queens),
+            cp.AllDifferent([queens[i] + i for i in range(n)]),
+            cp.AllDifferent([queens[i] - i for i in range(n)]),
+        )
+
+
+if __name__ == "__main__":
+    instances = [Instance(path=f"nqueens/{n}", name=f"nqueens-{n}", metadata={"n": n}) for n in (8, 32, 64)]
+    cpbenchy.run(instances, solvers=["ortools", "exact"], time_limit=30, loader=NQueens())
+```
+
+Start the experiment under `if __name__ == "__main__":` when the loader is defined in the same script:
+the worker imports the file again to create the loader.
+
+## Arguments
+
+Constructor arguments make a loader configurable, for example to compare two formulations of the same
+problem. As for observers, they must be Python literals, because the worker creates the loader again
+from them:
+
+```python
+class NQueens(cpbenchy.Loader):
+    def __init__(self, formulation="alldifferent"):
+        self.formulation = formulation      # or "pairwise": a != between every pair of queens
+
+    def load(self, instance):
+        ...
+```
+
+<CodeGroup titles={["Python", "Command line"]}>
+
+```python
+exp = cpbenchy.Experiment("results/nqueens", time_limit=30)
+for formulation in ("alldifferent", "pairwise"):
+    exp.add(instances, solvers=["ortools"], loader=NQueens(formulation))
+exp.run()
+```
+
+```sh
+cpbenchy run ... --loader "nqueens.py:NQueens(formulation='pairwise')"
+```
+
+</CodeGroup>
+
+The loader is part of what a run measures. Results record it, as `loader` (for example
+`NQueens('pairwise')`), and the same instance with another loader is another run. So the two
+formulations above are stored side by side, and resuming keeps them apart.
+[`formulations.py`](/examples/formulations/) is this example in full.
+
+## Good to know
+
+- **One loader per entry.** A loader applies to all instances of the `add()` (or the command) it is
+  given to. Give each kind of instance its own `add()`.
+- **Compressed files.** `self.read(path)` returns a file's contents, decompressed by its extension
+  (`.xz`, `.lzma`, `.gz`, `.bz2`). `self.opener(path)` gives an `open` that does the same, for readers
+  that take one.
+- **Building on CPMpy's readers.** The default `load` calls `cpmpy.tools.io.load`. Call
+  `super().load(instance)` to read the file as usual, and then change the model, for example to add a
+  constraint.
+- **A loader or an observer?** An observer's `on_load` can load instances too, but a loader is
+  recorded with each result and is part of the run's id. Use a loader whenever it changes the model.
+
+Next: [test your loader and share it](/plugins/testing/).

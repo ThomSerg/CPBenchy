@@ -1,0 +1,106 @@
+---
+title: Recipes
+description: Short observers and plugins for common needs, each with the simplest tool for the job.
+sidebar:
+  order: 5
+---
+
+<Aside type="caution" title="Under construction">
+  Writing plugins is still being worked on: the hooks, the `Observer` and `Loader` classes and these
+  pages may change. To use the plugins and observers that come with cpbenchy, see the
+  [library](/library/).
+</Aside>
+
+Each recipe is a complete file: save it, and use it with `-p file.py`, or `plugins=["file.py"]` in
+Python.
+
+## Record something about each model
+
+```python
+import cpbenchy
+
+class Variables(cpbenchy.Observer):
+    def on_finish(self, ctx):
+        if ctx.model is None:  # loading failed
+            return
+        from cpmpy.transformations.get_variables import get_variables_model
+
+        ctx.record("n_variables", len(get_variables_model(ctx.model)))
+```
+
+[`ModelSize`](/library/model-size/) in the library records the number of variables and constraints.
+
+## Print each solution as it is found
+
+```python
+import cpbenchy
+
+class Live(cpbenchy.Observer):
+    def on_event(self, run, event):
+        if event.kind == "solution":
+            print(f"{run.spec.instance.name} {run.spec.solver}: {event.data['objective']} after {event.t:.1f}s")
+```
+
+This runs in the parent, so it costs the runs nothing. Solutions come for optimization problems, from
+solvers that report them while solving.
+
+## Send each result somewhere
+
+```python
+import json
+
+import cpbenchy
+
+class JsonLines(cpbenchy.Observer):
+    def __init__(self, path="all-results.jsonl"):
+        self.path = path
+
+    def on_result(self, run, result):
+        with open(self.path, "a") as f:
+            f.write(json.dumps(result.to_dict()) + "\n")
+```
+
+Results are stored in the output directory anyway. This is for collecting them somewhere else as
+well, such as a shared file or a database: see [`SqliteStore`](/examples/sqlite-store/). To run
+cpbenchy *from* your own experiment framework instead, see [from your framework](/guides/backend/).
+
+## Settings for a solver
+
+```python
+import cpbenchy
+
+class Settings(cpbenchy.Observer):
+    def solver_args(self, ctx):
+        if ctx.spec.solver == "ortools" and not ctx.model.has_objective():
+            return {"num_violation_ls": 1}
+```
+
+These go to `solve()`, next to what cpbenchy sets itself: the time limit, the seed and the number of
+cores. Its table of solver parameters for the seed and the cores is `cpbenchy.worker.solvers.NATIVE`.
+For settings per run, give them as the run's `params` instead: they are part of what the run measures.
+
+## Your own instances
+
+Write a [loader](/plugins/loaders/).
+
+## Only some of the runs
+
+Choosing runs is a hook, `cpbenchy_modify_runs`. It gets all the runs, and changes the list in place:
+
+```python
+import cpbenchy
+
+@cpbenchy.hookimpl
+def cpbenchy_modify_runs(config, runs):
+    runs[:] = [r for r in runs if not (r.solver == "exact" and r.instance.name.startswith("huge"))]
+```
+
+## An option of your own
+
+See the [first plugin](/plugins/writing-plugins/#a-first-plugin): an option, and state across runs.
+
+## Run the workers somewhere else
+
+Return your own `cpbenchy.executors.Executor` from the hook `cpbenchy_make_executor`, and implement
+`execute(job) -> Measurement`. The `job` has the command, limits, CPUs, log file and environment. This
+is how containers and remote machines plug in.

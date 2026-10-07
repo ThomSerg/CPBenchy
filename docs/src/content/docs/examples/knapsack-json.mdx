@@ -1,0 +1,41 @@
+---
+title: "KnapsackJSON"
+description: "Benchmarks problems stored in your own file format, here knapsacks written as JSON."
+sidebar:
+  hidden: true
+---
+
+<PackageHeader id="knapsack-json" />
+
+## What it does
+
+Benchmarks problems stored in your own file format. This loader reads knapsack instances written as
+JSON and builds the CPMpy model, inside the measured run, so building it is measured as `parse_s`, as
+loading any other format is.
+
+```json
+{"capacity": 50, "items": [{"weight": 10, "value": 60}, {"weight": 20, "value": 100}]}
+```
+
+## Use it
+
+<CodeGroup titles={["Python", "Command line"]}>
+
+```python
+import cpbenchy
+
+cpbenchy.run("examples/data/*.json", solvers=["ortools", "exact"], time_limit=60,
+             loader="examples/loaders/knapsack_json.py:KnapsackJSON")
+```
+
+```sh
+cpbenchy run examples/data/*.json -s ortools -s exact -t 60 --loader examples/loaders/knapsack_json.py:KnapsackJSON
+```
+
+</CodeGroup>
+
+Results record the loader, so the same instance loaded another way is another run.
+
+## Implementation
+
+<PackageSource id="knapsack-json" />

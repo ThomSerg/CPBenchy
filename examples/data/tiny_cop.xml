@@ -1,0 +1,13 @@
+<instance format="XCSP3" type="COP">
+  <variables>
+    <array id="x" size="[3]"> 0..5 </array>
+    <var id="y"> 0..10 </var>
+  </variables>
+  <constraints>
+    <allDifferent> x[] </allDifferent>
+    <intension> eq(y,add(x[0],x[1])) </intension>
+  </constraints>
+  <objectives>
+    <minimize> add(y,x[2]) </minimize>
+  </objectives>
+</instance>
